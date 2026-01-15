@@ -45,6 +45,9 @@ class Config:
     LOGS_DIR = BASE_DIR / "logs"
     DB_PATH = BASE_DIR / "security.db"
     
+    # Camera source: 0 = /dev/video0, or use file path, RTSP URL, etc.
+    CAMERA_SOURCE = 0  # Default camera index, change to "test_video.mp4" for testing
+    
     for d in [RECORDINGS_DIR, SNAPSHOTS_DIR, ALERTS_DIR, TRUSTED_FACES_DIR, FIXED_IMAGES_DIR, LOGS_DIR]:
         d.mkdir(exist_ok=True)
     
