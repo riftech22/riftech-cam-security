@@ -160,6 +160,15 @@ sudo apt install -y \
     cmake \
     g++
 
+# Install OpenGL libraries (REQUIRED for OpenCV)
+sudo apt install -y \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1
+
 # Install additional dependencies
 sudo apt install -y \
     libopenblas-dev \

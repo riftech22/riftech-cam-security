@@ -10,7 +10,9 @@ sleep 2
 
 # Start Python web server
 echo "Starting WebSocket server..."
-cd ~/riftech-cam-security
+# Auto-detect script directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
 source venv/bin/activate
 
 # Check if websockets is installed
