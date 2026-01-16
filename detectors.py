@@ -186,6 +186,7 @@ class PersonDetector:
         self.pose = None
         self.mp_pose = _mp_solutions  # Use global reference
         self._mediapipe_available = MEDIAPIPE_AVAILABLE
+        self.draw_skeleton = False  # Skeleton drawing toggle
         
         if YOLO_AVAILABLE:
             self._load_model()
