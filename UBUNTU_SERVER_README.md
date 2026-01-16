@@ -17,7 +17,7 @@ This guide explains how to install and run the Riftech Cam Security system on Ub
 
 ### Automated Installation (Recommended)
 
-The automated installer handles everything:
+The automated installer handles everything and works with both normal users and root:
 
 ```bash
 # 1. Clone repository
@@ -28,9 +28,11 @@ cd riftech-cam-security
 # 2. Make installer executable
 chmod +x install_ubuntu_server.sh
 
-# 3. Run installer
+# 3. Run installer (works as root or normal user)
 ./install_ubuntu_server.sh
 ```
+
+**Note:** The installer automatically detects if running as root or as a normal user and configures the service accordingly.
 
 The installer will:
 - ✅ Update system packages

@@ -31,12 +31,6 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Check if running as root
-if [ "$EUID" -eq 0 ]; then 
-    print_error "Please do not run this script as root. Run as normal user with sudo."
-    exit 1
-fi
-
 echo ""
 echo "╔═══════════════════════════════════════════════════════════════╗"
 echo "║                                                               ║"
@@ -46,9 +40,15 @@ echo "║                                                               ║"
 echo "╚═══════════════════════════════════════════════════════════════╝"
 echo ""
 
-# Get current user
-CURRENT_USER=$(whoami)
-CURRENT_HOME=$(eval echo ~$CURRENT_USER)
+# Get current user (works for both root and normal users)
+if [ "$EUID" -eq 0 ]; then
+    CURRENT_USER="root"
+    CURRENT_HOME="/root"
+    print_warning "Running as root user. Creating service for root user."
+else
+    CURRENT_USER=$(whoami)
+    CURRENT_HOME=$(eval echo ~$CURRENT_USER)
+fi
 
 print_info "Installation user: $CURRENT_USER"
 print_info "Home directory: $CURRENT_HOME"
