@@ -413,6 +413,13 @@ class PersonDetector:
         top_frame = frame_processed[:mid_y, :]
         bottom_frame = frame_processed[mid_y:, :]
         
+        # Frigate-style: Resize to 320x320 for detection (from detector_config.py)
+        # Default input size for Frigate models
+        DETECTION_SIZE = 320
+        
+        top_frame_detect = cv2.resize(top_frame, (DETECTION_SIZE, DETECTION_SIZE), interpolation=cv2.INTER_LINEAR)
+        bottom_frame_detect = cv2.resize(bottom_frame, (DETECTION_SIZE, DETECTION_SIZE), interpolation=cv2.INTER_LINEAR)
+        
         top_persons = []
         bottom_persons = []
         
@@ -423,15 +430,25 @@ class PersonDetector:
         max_ratio = 1.0
         
         # Detect in top camera (already enhanced by preprocessing)
-        if top_frame.size > 0:
+        if top_frame_detect.size > 0:
             try:
                 with self._lock:
-                    results_top = self.model(top_frame, conf=top_conf, classes=[0], verbose=False)
+                    results_top = self.model(top_frame_detect, conf=top_conf, classes=[0], verbose=False)
                 
                 if results_top and results_top[0].boxes:
                     for box in results_top[0].boxes:
                         x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
                         conf = float(box.conf[0])
+                        
+                        # Scale coordinates back to original frame size (320x320 -> top_frame size)
+                        top_h, top_w = top_frame.shape[:2]
+                        scale_x = top_w / DETECTION_SIZE
+                        scale_y = top_h / DETECTION_SIZE
+                        
+                        x1 = int(x1 * scale_x)
+                        y1 = int(y1 * scale_y)
+                        x2 = int(x2 * scale_x)
+                        y2 = int(y2 * scale_y)
                         
                         # Calculate area
                         area = (x2 - x1) * (y2 - y1)
@@ -463,15 +480,25 @@ class PersonDetector:
                 print(f"[Split-Top] Error: {e}")
         
         # Detect in bottom camera (already enhanced by preprocessing)
-        if bottom_frame.size > 0:
+        if bottom_frame_detect.size > 0:
             try:
                 with self._lock:
-                    results_bottom = self.model(bottom_frame, conf=bottom_conf, classes=[0], verbose=False)
+                    results_bottom = self.model(bottom_frame_detect, conf=bottom_conf, classes=[0], verbose=False)
                 
                 if results_bottom and results_bottom[0].boxes:
                     for box in results_bottom[0].boxes:
                         x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
                         conf = float(box.conf[0])
+                        
+                        # Scale coordinates back to original frame size (320x320 -> bottom_frame size)
+                        bottom_h, bottom_w = bottom_frame.shape[:2]
+                        scale_x = bottom_w / DETECTION_SIZE
+                        scale_y = bottom_h / DETECTION_SIZE
+                        
+                        x1 = int(x1 * scale_x)
+                        y1 = int(y1 * scale_y)
+                        x2 = int(x2 * scale_x)
+                        y2 = int(y2 * scale_y)
                         
                         # Calculate area
                         area = (x2 - x1) * (y2 - y1)
