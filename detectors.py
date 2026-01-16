@@ -63,12 +63,14 @@ try:
     # Check if solutions module exists
     if hasattr(mp, 'solutions'):
         MEDIAPIPE_AVAILABLE = True
+        print("[MediaPipe] Available - skeleton detection enabled")
     else:
         print("[MediaPipe] mp.solutions not available, skeleton detection disabled")
 except ImportError:
     print("[MediaPipe] Not installed, skeleton detection disabled")
 except Exception as e:
     print(f"[MediaPipe] Error: {e}")
+    MEDIAPIPE_AVAILABLE = False
 
 
 @dataclass
