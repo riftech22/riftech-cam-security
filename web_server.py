@@ -179,6 +179,10 @@ class ProcessingThread:
                 frame = self.system.capture_thread.get_frame()
                 
                 if frame is not None:
+                    # Submit frame to detection thread
+                    if self.system.detection_thread:
+                        self.system.detection_thread.submit(frame)
+                    
                     # Process frame with all features
                     processed = self.system._process_frame_internal(frame)
                     
