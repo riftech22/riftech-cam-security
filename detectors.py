@@ -286,7 +286,8 @@ class PersonDetector:
             print(f"[Detector] Detection error: {e}")
         
         # Run skeleton detection for each person if enabled
-        if draw_skeleton and MEDIAPIPE_AVAILABLE and persons:
+        # Use self.draw_skeleton instead of parameter for toggle support
+        if self.draw_skeleton and MEDIAPIPE_AVAILABLE and persons:
             self._init_pose()
             if self.pose:
                 for person in persons:
