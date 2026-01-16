@@ -60,9 +60,15 @@ except ImportError:
 MEDIAPIPE_AVAILABLE = False
 try:
     import mediapipe as mp
-    MEDIAPIPE_AVAILABLE = True
+    # Check if solutions module exists
+    if hasattr(mp, 'solutions'):
+        MEDIAPIPE_AVAILABLE = True
+    else:
+        print("[MediaPipe] mp.solutions not available, skeleton detection disabled")
 except ImportError:
-    pass
+    print("[MediaPipe] Not installed, skeleton detection disabled")
+except Exception as e:
+    print(f"[MediaPipe] Error: {e}")
 
 
 @dataclass
@@ -164,7 +170,11 @@ class PersonDetector:
         self.pose = None
         self.mp_pose = None
         if MEDIAPIPE_AVAILABLE:
-            self.mp_pose = mp.solutions.pose
+            try:
+                self.mp_pose = mp.solutions.pose
+            except Exception as e:
+                print(f"[Detector] Error accessing mp.solutions: {e}")
+                MEDIAPIPE_AVAILABLE = False
         
         if YOLO_AVAILABLE:
             self._load_model()
