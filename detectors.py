@@ -415,7 +415,7 @@ class PersonDetector:
         
         # Frigate-style: Resize to 320x320 for detection (from detector_config.py)
         # Default input size for Frigate models
-        DETECTION_SIZE = 320
+        DETECTION_SIZE = 640
         
         top_frame_detect = cv2.resize(top_frame, (DETECTION_SIZE, DETECTION_SIZE), interpolation=cv2.INTER_LINEAR)
         bottom_frame_detect = cv2.resize(bottom_frame, (DETECTION_SIZE, DETECTION_SIZE), interpolation=cv2.INTER_LINEAR)
