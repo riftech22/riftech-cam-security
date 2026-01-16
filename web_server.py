@@ -167,50 +167,36 @@ class SecurityWebSystem:
         """Capture frame dengan RTSP fix untuk mengatasi stuck frame."""
         if self.camera_available and self.cap and self.cap.isOpened():
             try:
-                # Clear buffer untuk RTSP (hindari frame lama)
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                # Skip frames untuk RTSP buffer flush
+                for _ in range(2):
+                    self.cap.grab()
                 
-                # Baca frame dengan retry
-                max_retries = 3
-                frame = None
+                # Baca frame
+                ret, frame = self.cap.read()
                 
-                for retry in range(max_retries):
-                    ret, temp_frame = self.cap.read()
+                if ret and frame is not None and isinstance(frame, np.ndarray):
+                    # Force convert ke BGR jika perlu
+                    if len(frame.shape) == 2 or frame.shape[2] == 1:
+                        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
                     
-                    if ret and temp_frame is not None and isinstance(temp_frame, np.ndarray):
-                        frame = temp_frame
+                    # Cek jika frame valid
+                    if frame.shape[0] > 0 and frame.shape[1] > 0:
+                        # Store frame
+                        with self.frame_lock:
+                            self.current_frame = frame.copy()
                         
-                        # Cek jika frame valid (bukan frame kosong)
-                        if frame.shape[0] > 0 and frame.shape[1] > 0:
-                            # Submit ke detection thread
-                            if self.detection_thread and not self.demo_mode:
-                                self.detection_thread.submit(frame)
-                            
-                            self.consecutive_failures = 0
-                            return frame
-                        else:
-                            logging.warning(f"[Capture] Invalid frame shape: {frame.shape}")
+                        self.consecutive_failures = 0
+                        return frame
                     else:
-                        if retry < max_retries - 1:
-                            logging.warning(f"[Capture] Retry {retry + 1}/{max_retries}")
-                            time.sleep(0.05)
-                
-                # Jika semua retry gagal
-                if frame is None:
+                        logging.warning(f"[Capture] Invalid frame shape: {frame.shape}")
+                else:
                     self.consecutive_failures += 1
                     if self.consecutive_failures > self.max_consecutive_failures:
-                        logging.error(f"[Capture] Too many failures, reconnecting...")
-                        # Coba reconnect kamera
-                        self.cap.release()
-                        time.sleep(1)
-                        self.cap = cv2.VideoCapture(Config.CAMERA_SOURCE if self.config else 0)
-                        if self.cap.isOpened():
-                            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-                            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-                            self.cap.set(cv2.CAP_PROP_FPS, 30)
-                            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                            self.consecutive_failures = 0
-                            return self.capture_frame()
+                        logging.error(f"[Capture] Too many failures, using last frame")
+                        with self.frame_lock:
+                            if self.current_frame is not None:
+                                return self.current_frame.copy()
+                        return self.create_demo_frame()
             except Exception as e:
                 logging.error(f"[Capture] Error: {e}")
                 self.consecutive_failures += 1
@@ -253,11 +239,16 @@ class SecurityWebSystem:
         if frame is None:
             return self.create_demo_frame()
         
-        # Ensure frame is BGR color format
+        # Force ensure frame is BGR color format
         if len(frame.shape) == 2 or frame.shape[2] == 1:
             frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
         
+        # Resize untuk performance jika perlu
         h, w = frame.shape[:2]
+        if h > 720 or w > 1280:
+            frame = cv2.resize(frame, (1280, 720))
+            h, w = 720, 1280
+        
         output = frame.copy()
         
         # Timestamp
@@ -559,18 +550,20 @@ class SecurityWebServer:
             }))
     
     async def broadcast_frame(self, processed_frame: np.ndarray):
-        """Broadcast frame ke semua clients."""
+        """Broadcast frame ke semua clients dengan optimized encoding."""
         try:
-            # Ensure frame is BGR color format before encoding
+            # Force ensure BGR format
             if len(processed_frame.shape) == 2 or processed_frame.shape[2] == 1:
                 processed_frame = cv2.cvtColor(processed_frame, cv2.COLOR_GRAY2BGR)
             
-            # Encode with higher quality and faster compression
-            _, buffer = cv2.imencode('.jpg', processed_frame, [
-                cv2.IMWRITE_JPEG_QUALITY, 70,
-                cv2.IMWRITE_JPEG_OPTIMIZE, 1,
-                cv2.IMWRITE_JPEG_PROGRESSIVE, 0
-            ])
+            # Encode dengan lower quality untuk speed
+            encode_params = [
+                cv2.IMWRITE_JPEG_QUALITY, 65,  # Lower quality for speed
+                cv2.IMWRITE_JPEG_OPTIMIZE, 0,  # Skip optimization for speed
+                cv2.IMWRITE_JPEG_PROGRESSIVE, 0  # Disable progressive
+            ]
+            
+            _, buffer = cv2.imencode('.jpg', processed_frame, encode_params)
             frame_b64 = base64.b64encode(buffer).decode('utf-8')
             
             message = json.dumps({
@@ -600,11 +593,12 @@ class SecurityWebServer:
             
             self.system.running = True
             
-            # Start frame capture loop with optimized timing
+            # Start frame capture loop dengan frame skipping
             async def capture_loop():
                 frame_count = 0
                 last_log_time = time.time()
-                target_fps = 30
+                skip_counter = 0
+                target_fps = 25  # Reduced target for stability
                 frame_interval = 1.0 / target_fps
                 
                 while self.system.running:
@@ -616,6 +610,12 @@ class SecurityWebServer:
                             processed = self.system.process_frame(frame)
                             await self.broadcast_frame(processed)
                             frame_count += 1
+                        
+                        # Skip frames untuk maintain FPS
+                        skip_counter += 1
+                        if skip_counter >= 5:  # Skip 1 frame setiap 5 frames
+                            await asyncio.sleep(0.02)
+                            skip_counter = 0
                         
                         # Log every 2 seconds
                         if time.time() - last_log_time >= 2.0:

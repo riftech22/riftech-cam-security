@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import Dict, Any
 import os
 
-
 class AlertType(Enum):
     MOTION = "motion"
     PERSON = "person"
@@ -15,12 +14,10 @@ class AlertType(Enum):
     FACE_DETECTED = "face_detected"
     SYSTEM = "system"
 
-
 class Sensitivity(Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
-
 
 @dataclass
 class PerformanceSettings:
@@ -34,7 +31,6 @@ class PerformanceSettings:
     skeleton_interval: int = 3
     yolo_model: str = 'yolov8n.pt'
 
-
 class Config:
     BASE_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
     RECORDINGS_DIR = BASE_DIR / "recordings"
@@ -45,8 +41,7 @@ class Config:
     LOGS_DIR = BASE_DIR / "logs"
     DB_PATH = BASE_DIR / "security.db"
     
-    # Camera source: 0 = /dev/video0, or use file path, RTSP URL, etc.
-    CAMERA_SOURCE = 0  # Default camera index, change to "test_video.mp4" for testing
+    CAMERA_SOURCE = r"rtsp://admin:Kuncong203@10.26.27.196:554/live/ch00_0"
     
     for d in [RECORDINGS_DIR, SNAPSHOTS_DIR, ALERTS_DIR, TRUSTED_FACES_DIR, FIXED_IMAGES_DIR, LOGS_DIR]:
         d.mkdir(exist_ok=True)
@@ -55,7 +50,6 @@ class Config:
     FRAME_HEIGHT = 720
     TARGET_FPS = 30
     
-    # Detection confidence - lower for better coverage
     YOLO_CONFIDENCE = 0.25
     SKELETON_CONFIDENCE = 0.5
     
@@ -65,9 +59,8 @@ class Config:
     MOTION_THRESHOLD = 20
     MOTION_MIN_AREA = 300
     
-    # CRITICAL TIMING CONSTANTS
-    INTRUDER_UPDATE_INTERVAL = 6.0  # Send "still in zone" every 6 seconds
-    ZONE_CLEAR_DELAY = 5.0          # Wait 5 seconds before declaring zone clear
+    INTRUDER_UPDATE_INTERVAL = 6.0
+    ZONE_CLEAR_DELAY = 5.0
     
     TELEGRAM_BOT_TOKEN = "8560050150:AAH4Dzk0TfE0xezzNsdZFhta1svOLPOvs4k"
     TELEGRAM_CHAT_ID = "7456977789"
