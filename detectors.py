@@ -70,13 +70,13 @@ try:
     if hasattr(mp, 'solutions'):
         _mp_solutions = mp.solutions
         MEDIAPIPE_AVAILABLE = True
-        print("[MediaPipe] Available - skeleton detection enabled")
+        logger.info("[MediaPipe] Available - skeleton detection enabled")
     else:
-        print("[MediaPipe] mp.solutions not available, skeleton detection disabled")
+        logger.warning("[MediaPipe] mp.solutions not available, skeleton detection disabled")
 except ImportError:
-    print("[MediaPipe] Not installed, skeleton detection disabled")
+    logger.warning("[MediaPipe] Not installed, skeleton detection disabled")
 except Exception as e:
-    print(f"[MediaPipe] Error: {e}")
+    logger.error(f"[MediaPipe] Error: {e}")
     MEDIAPIPE_AVAILABLE = False
 
 
