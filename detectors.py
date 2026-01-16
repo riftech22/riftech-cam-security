@@ -536,6 +536,16 @@ class PersonDetector:
                             print(f"[Split-Top] REJECT: aspect_ratio={aspect_ratio:.2f} out of range [{min_ratio}, {max_ratio}]")
                             continue
                         
+                        # IMPORTANT: Constraint bounding box to stay within top split (0 to 360)
+                        # Prevent bbox from crossing split boundary
+                        y1 = max(0, y1)
+                        y2 = min(split_point - 5, y2)  # Leave 5px margin from split line
+                        
+                        # Ensure bbox is valid after constraints
+                        if y2 <= y1 or (x2 - x1) < 10 or (y2 - y1) < 10:
+                            print(f"[Split-Top] REJECT: Invalid bbox after constraints")
+                            continue
+                        
                         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
                         
                         person = PersonDetection(
@@ -598,6 +608,16 @@ class PersonDetector:
                         # Frigate-style aspect ratio filtering (person: 0.4-1.3) - MORE STRICT
                         if aspect_ratio < min_ratio or aspect_ratio > max_ratio:
                             print(f"[Split-Bottom] REJECT: aspect_ratio={aspect_ratio:.2f} out of range [{min_ratio}, {max_ratio}]")
+                            continue
+                        
+                        # IMPORTANT: Constraint bounding box to stay within bottom split (360 to 720)
+                        # Prevent bbox from crossing split boundary
+                        y1 = max(5, y1)  # Leave 5px margin from split line
+                        y2 = min(bottom_h, y2)
+                        
+                        # Ensure bbox is valid after constraints
+                        if y2 <= y1 or (x2 - x1) < 10 or (y2 - y1) < 10:
+                            print(f"[Split-Bottom] REJECT: Invalid bbox after constraints")
                             continue
                         
                         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
