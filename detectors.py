@@ -57,11 +57,14 @@ try:
 except ImportError:
     pass
 
+# Try to import MediaPipe for skeleton detection
 MEDIAPIPE_AVAILABLE = False
+_mp_solutions = None
+
 try:
     import mediapipe as mp
-    # Check if solutions module exists
     if hasattr(mp, 'solutions'):
+        _mp_solutions = mp.solutions
         MEDIAPIPE_AVAILABLE = True
         print("[MediaPipe] Available - skeleton detection enabled")
     else:
@@ -168,16 +171,10 @@ class PersonDetector:
         self._lock = threading.Lock()
         self._loaded = False
         
-        # MediaPipe pose for skeleton
+        # MediaPipe pose for skeleton (use global reference)
         self.pose = None
-        self.mp_pose = None
-        if MEDIAPIPE_AVAILABLE:
-            try:
-                import mediapipe as mp
-                self.mp_pose = mp.solutions.pose
-            except Exception as e:
-                print(f"[Detector] Error accessing mp.solutions: {e}")
-                MEDIAPIPE_AVAILABLE = False
+        self.mp_pose = _mp_solutions  # Use global reference
+        self._mediapipe_available = MEDIAPIPE_AVAILABLE
         
         if YOLO_AVAILABLE:
             self._load_model()
@@ -196,7 +193,7 @@ class PersonDetector:
     
     def _init_pose(self):
         """Lazy init MediaPipe pose."""
-        if self.pose is None and MEDIAPIPE_AVAILABLE and self.mp_pose:
+        if self.pose is None and self._mediapipe_available and self.mp_pose:
             self.pose = self.mp_pose.Pose(
                 static_image_mode=False,
                 model_complexity=1,
@@ -359,7 +356,7 @@ class PersonDetector:
                 
                 # Only draw if both points are visible and within bbox
                 if start.visibility > 0.5 and end.visibility > 0.5:
-                    # Check if points are roughly within the person's area
+                    # Check if points are roughly within person's area
                     if self._point_near_bbox(start.x, start.y, bbox) and self._point_near_bbox(end.x, end.y, bbox):
                         # Draw glow effect
                         cv2.line(frame, (start.x, start.y), (end.x, end.y), 
@@ -397,7 +394,7 @@ class PersonDetector:
                 cv2.circle(frame, (lm.x, lm.y), radius - 1, (255, 255, 255), 1)
     
     def _point_near_bbox(self, x: int, y: int, bbox: Tuple[int, int, int, int], margin: float = 0.3) -> bool:
-        """Check if point is near the bounding box."""
+        """Check if point is near bounding box."""
         x1, y1, x2, y2 = bbox
         w, h = x2 - x1, y2 - y1
         
