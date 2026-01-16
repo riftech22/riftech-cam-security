@@ -253,6 +253,10 @@ class SecurityWebSystem:
         if frame is None:
             return self.create_demo_frame()
         
+        # Ensure frame is BGR color format
+        if len(frame.shape) == 2 or frame.shape[2] == 1:
+            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        
         h, w = frame.shape[:2]
         output = frame.copy()
         
@@ -275,10 +279,11 @@ class SecurityWebSystem:
         
         # Night vision
         if self.night_vision:
-            output = cv2.convertScaleAbs(output, alpha=1.5, beta=30)
+            # Convert to grayscale then enhance green channel for night vision effect
             gray = cv2.cvtColor(output, cv2.COLOR_BGR2GRAY)
             output = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-            output[:, :, 1] = np.clip(output[:, :, 1] * 1.3, 0, 255).astype(np.uint8)
+            # Enhance green channel
+            output[:, :, 1] = np.clip(output[:, :, 1] * 1.3 + 30, 0, 255).astype(np.uint8)
         
         # Heat map
         if self.enable_heatmap and self.motion_detector and not self.demo_mode:
@@ -556,7 +561,16 @@ class SecurityWebServer:
     async def broadcast_frame(self, processed_frame: np.ndarray):
         """Broadcast frame ke semua clients."""
         try:
-            _, buffer = cv2.imencode('.jpg', processed_frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            # Ensure frame is BGR color format before encoding
+            if len(processed_frame.shape) == 2 or processed_frame.shape[2] == 1:
+                processed_frame = cv2.cvtColor(processed_frame, cv2.COLOR_GRAY2BGR)
+            
+            # Encode with higher quality and faster compression
+            _, buffer = cv2.imencode('.jpg', processed_frame, [
+                cv2.IMWRITE_JPEG_QUALITY, 70,
+                cv2.IMWRITE_JPEG_OPTIMIZE, 1,
+                cv2.IMWRITE_JPEG_PROGRESSIVE, 0
+            ])
             frame_b64 = base64.b64encode(buffer).decode('utf-8')
             
             message = json.dumps({
@@ -586,21 +600,38 @@ class SecurityWebServer:
             
             self.system.running = True
             
-            # Start frame capture loop
+            # Start frame capture loop with optimized timing
             async def capture_loop():
                 frame_count = 0
+                last_log_time = time.time()
+                target_fps = 30
+                frame_interval = 1.0 / target_fps
+                
                 while self.system.running:
                     try:
+                        start_time = time.time()
+                        
                         frame = self.system.capture_frame()
                         if frame is not None:
                             processed = self.system.process_frame(frame)
                             await self.broadcast_frame(processed)
                             frame_count += 1
-                            if frame_count % 30 == 0:  # Log setiap 30 frame (~1 detik)
-                                logging.info(f"[Capture] Processed {frame_count} frames, {len(self.clients)} clients")
+                        
+                        # Log every 2 seconds
+                        if time.time() - last_log_time >= 2.0:
+                            actual_fps = frame_count / (time.time() - last_log_time)
+                            logging.info(f"[Capture] FPS: {actual_fps:.1f}, Clients: {len(self.clients)}")
+                            frame_count = 0
+                            last_log_time = time.time()
+                        
+                        # Calculate sleep time to maintain target FPS
+                        elapsed = time.time() - start_time
+                        sleep_time = max(0, frame_interval - elapsed)
+                        await asyncio.sleep(sleep_time)
+                        
                     except Exception as e:
                         logging.error(f"[Capture] Error: {e}")
-                    await asyncio.sleep(1/30)  # 30 FPS
+                        await asyncio.sleep(0.1)
             
             asyncio.create_task(capture_loop())
             
