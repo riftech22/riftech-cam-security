@@ -78,10 +78,25 @@ class Config:
     ZONE_CLEAR_DELAY = 5.0  # Seconds before zone is considered clear
     
     # Telegram Bot Configuration (Optional)
-    # Get token from @BotFather on Telegram
-    # Get chat ID from @userinfobot on Telegram
-    TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
-    TELEGRAM_CHAT_ID = "YOUR_CHAT_ID_HERE"
+    # 
+    # How to get Telegram Bot Token:
+    # 1. Open Telegram and search for @BotFather
+    # 2. Send /newbot command
+    # 3. Follow instructions to create a bot
+    # 4. Copy the token (looks like: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz)
+    # 
+    # How to get Telegram Chat ID:
+    # 1. Open Telegram and search for @userinfobot
+    # 2. Send /start command
+    # 3. Copy your Chat ID (numeric value)
+    # 
+    # Example:
+    # TELEGRAM_BOT_TOKEN = "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+    # TELEGRAM_CHAT_ID = "123456789"
+    #
+    # Leave empty to disable Telegram notifications:
+    TELEGRAM_BOT_TOKEN = ""
+    TELEGRAM_CHAT_ID = ""
     
     # Audio Settings
     ALARM_FREQUENCY = 880  # Frequency in Hz

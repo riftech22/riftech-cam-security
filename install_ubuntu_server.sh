@@ -68,6 +68,22 @@ print_info "Camera RTSP URL: $RTSP_URL"
 print_info "Server IP: $SERVER_IP"
 echo ""
 
+# Ask for Telegram configuration
+print_warning "Telegram Configuration (Optional)"
+echo "Leave empty to skip Telegram integration"
+read -p "Enter Telegram Bot Token (from @BotFather): " TELEGRAM_BOT_TOKEN
+read -p "Enter Telegram Chat ID (from @userinfobot): " TELEGRAM_CHAT_ID
+
+echo ""
+if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+    print_success "Telegram integration enabled"
+    print_info "Bot Token: ${TELEGRAM_BOT_TOKEN:0:20}..."
+    print_info "Chat ID: $TELEGRAM_CHAT_ID"
+else
+    print_warning "Telegram integration skipped (empty credentials)"
+fi
+echo ""
+
 # Step 1: Update system
 print_info "Step 1/8: Updating system packages..."
 sudo apt update && sudo apt upgrade -y
@@ -176,6 +192,14 @@ print_info "Step 8/8: Configuring application..."
 print_info "Updating camera configuration..."
 sed -i "s|CAMERA_SOURCE =.*|CAMERA_SOURCE = r\"$RTSP_URL\"|g" config.py
 
+# Update config.py with Telegram credentials if provided
+if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+    print_info "Updating Telegram configuration..."
+    sed -i "s|TELEGRAM_BOT_TOKEN =.*|TELEGRAM_BOT_TOKEN = \"$TELEGRAM_BOT_TOKEN\"|g" config.py
+    sed -i "s|TELEGRAM_CHAT_ID =.*|TELEGRAM_CHAT_ID = \"$TELEGRAM_CHAT_ID\"|g" config.py
+    print_success "Telegram configuration updated"
+fi
+
 print_success "Camera configuration updated"
 
 # Update systemd service file
@@ -226,6 +250,7 @@ echo "Configuration:"
 echo "  - User: $CURRENT_USER"
 echo "  - Server IP: $SERVER_IP"
 echo "  - Camera RTSP: $RTSP_URL"
+echo "  - Telegram Integration: $([ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ] && echo "Enabled" || echo "Disabled")"
 echo "  - Project directory: $CURRENT_HOME/riftech-cam-security"
 echo ""
 echo "Access URLs:"
