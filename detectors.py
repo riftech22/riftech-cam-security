@@ -248,8 +248,34 @@ class PersonDetector:
     def set_confidence(self, conf: float):
         self.confidence = max(0.1, min(0.99, conf))
     
+    def _enhance_frame(self, frame: np.ndarray) -> np.ndarray:
+        """Enhance frame for better detection using Frigate-style preprocessing.
+        
+        Args:
+            frame: Input frame
+            
+        Returns:
+            Enhanced frame
+        """
+        # Convert to LAB color space for better lighting adjustment
+        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        
+        # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        
+        # Merge back and convert to BGR
+        enhanced = cv2.merge([l, a, b])
+        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+        
+        # Slight brightness adjustment
+        enhanced = cv2.convertScaleAbs(enhanced, alpha=1.2, beta=10)
+        
+        return enhanced
+    
     def detect_split_frame(self, frame, top_conf=0.25, bottom_conf=0.15):
-        """Detect persons in split frame (2 cameras).
+        """Detect persons in split frame (2 cameras) with Frigate-style filtering.
         
         Args:
             frame: Input frame (1280x720 with vertical split)
@@ -266,8 +292,15 @@ class PersonDetector:
         top_frame = frame[:mid_y, :]
         bottom_frame = frame[mid_y:, :]
         
+        # Enhance bottom camera (darker area typically)
+        bottom_frame_enhanced = self._enhance_frame(bottom_frame)
+        
         all_persons = []
         track_id = 0
+        
+        # Frigate-style area filters (min_area: 500, max_area: 100000)
+        min_area = 500
+        max_area = 100000
         
         # Detect in top camera
         if top_frame.size > 0:
@@ -279,6 +312,12 @@ class PersonDetector:
                     for box in results_top[0].boxes:
                         x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
                         conf = float(box.conf[0])
+                        
+                        # Frigate-style area filtering
+                        area = (x2 - x1) * (y2 - y1)
+                        if area < min_area or area > max_area:
+                            continue
+                        
                         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
                         
                         person = PersonDetection(
@@ -293,17 +332,21 @@ class PersonDetector:
             except Exception as e:
                 print(f"[Split-Top] Error: {e}")
         
-        # Detect in bottom camera
-        if bottom_frame.size > 0:
+        # Detect in bottom camera with enhanced frame
+        if bottom_frame_enhanced.size > 0:
             try:
                 with self._lock:
-                    results_bottom = self.model(bottom_frame, conf=bottom_conf, classes=[0], verbose=False)
+                    results_bottom = self.model(bottom_frame_enhanced, conf=bottom_conf, classes=[0], verbose=False)
                 
                 if results_bottom and results_bottom[0].boxes:
                     for box in results_bottom[0].boxes:
                         x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
                         conf = float(box.conf[0])
-                        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+                        
+                        # Frigate-style area filtering
+                        area = (x2 - x1) * (y2 - y1)
+                        if area < min_area or area > max_area:
+                            continue
                         
                         # Adjust coordinates to full frame (bottom region: mid_y-h)
                         person = PersonDetection(
