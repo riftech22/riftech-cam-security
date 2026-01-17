@@ -580,6 +580,12 @@ class SecurityWebSystem:
             
             self.person_count = len(persons)
             
+            # DEBUG: Log overlay status
+            logging.info(f"[Overlay] Skeleton: {self.enable_skeleton}, Motion: {self.enable_motion}, "
+                        f"Heatmap: {self.enable_heatmap}, Night: {self.night_vision}, "
+                        f"Zones: {self.zone_manager.get_zone_count() if self.zone_manager else 0}, "
+                        f"Persons: {len(persons)}, Motion regions: {len(motion_regions)}")
+            
             # Night vision (safe processing)
             if self.night_vision:
                 try:
@@ -641,6 +647,18 @@ class SecurityWebSystem:
                             cv2.rectangle(output, (x1, y1), (x2, y2), color, 2)
                             cv2.putText(output, f"Person {person.confidence:.0%}", 
                                        (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                            
+                            # Draw skeleton if enabled and available
+                            if self.enable_skeleton and hasattr(person, 'skeleton_landmarks') and person.skeleton_landmarks:
+                                try:
+                                    self.person_detector._draw_professional_skeleton(
+                                        output, 
+                                        person.skeleton_landmarks, 
+                                        person.bbox
+                                    )
+                                    logging.debug(f"[Overlay] Skeleton drawn for person")
+                                except Exception as e:
+                                    logging.error(f"[Skeleton] Draw error: {e}")
                             
                             # Send Telegram alert if armed and in zone
                             if self.is_armed and in_zone and self.telegram_enabled:

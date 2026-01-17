@@ -916,7 +916,8 @@ class PersonDetector:
     
     def _draw_professional_skeleton(self, frame: np.ndarray, landmarks: List[SkeletonLandmark], bbox: Tuple[int, int, int, int]):
         """Draw a professional-looking skeleton."""
-        if len(landmarks) < 33:
+        if len(landmarks) < 10:  # Changed from 33 to 10 for better visibility
+            logging.warning(f"[Skeleton] Only {len(landmarks)} keypoints detected, skipping skeleton")
             return
         
         x1, y1, x2, y2 = bbox
