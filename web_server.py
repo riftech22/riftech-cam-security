@@ -711,25 +711,45 @@ class SecurityWebSystem:
             import os
             os.makedirs('snapshots', exist_ok=True)
             
-            # Get frame from appropriate source based on mode
+            frame = None
+            
+            # Try multiple sources to get a frame
             if self.use_v380_ffmpeg:
-                # Get frame from V380 processor
-                logging.info("[Snapshot] Getting frame from V380 processor...")
+                # V380 mode: try V380 processor first
+                logging.info("[Snapshot] Trying V380 processor...")
                 frame = self._get_v380_frame()
+                
                 if frame is None or frame.size == 0:
-                    logging.warning("[Snapshot] No V380 frame available, using demo frame")
-                    frame = self._create_demo_frame()
+                    logging.warning("[Snapshot] V380 frame not available")
+                    frame = None
             else:
-                # Get frame from processing thread
-                logging.info("[Snapshot] Getting frame from processing thread...")
+                # Normal mode: try processed frame first
+                logging.info("[Snapshot] Trying processing thread...")
                 if self.processing_thread:
                     frame = self.processing_thread.get_processed_frame()
-                    if frame is None:
-                        logging.warning("[Snapshot] No frame from processing thread, using demo frame")
-                        frame = self._create_demo_frame()
+                    if frame is not None and frame.size > 0:
+                        logging.info(f"[Snapshot] Got processed frame: {frame.shape}")
+                    else:
+                        frame = None
+                        logging.warning("[Snapshot] No processed frame available")
                 else:
-                    logging.warning("[Snapshot] Processing thread not available, using demo frame")
-                    frame = self._create_demo_frame()
+                    logging.warning("[Snapshot] Processing thread not available")
+                
+                # If no processed frame, try raw frame from capture thread
+                if frame is None and self.capture_thread:
+                    logging.info("[Snapshot] Trying raw frame from capture thread...")
+                    raw_frame = self.capture_thread.get_frame()
+                    if raw_frame is not None and raw_frame.size > 0:
+                        logging.info(f"[Snapshot] Got raw frame: {raw_frame.shape}")
+                        # Add timestamp overlay to raw frame
+                        h, w = raw_frame.shape[:2]
+                        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+                        cv2.putText(raw_frame, ts, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+                        cv2.putText(raw_frame, "SNAPSHOT", (10, h - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                        frame = raw_frame
+                    else:
+                        logging.warning("[Snapshot] No raw frame available")
+                        frame = None
             
             # Validate frame
             if frame is None or frame.size == 0:
