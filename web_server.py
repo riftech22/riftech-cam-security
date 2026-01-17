@@ -12,6 +12,7 @@ import threading
 import logging
 import sys
 import queue
+import requests
 from typing import Set, Dict, Optional, Tuple
 from collections import deque
 
@@ -864,7 +865,7 @@ Welcome! I'm your security assistant.
             if person_frame is None or person_frame.size == 0:
                 return
             
-            # Save alert photo
+                # Save alert photo
             ts = time.strftime("%Y%m%d_%H%M%S")
             alert_path = f"alerts/alert_{ts}.jpg"
             
@@ -966,6 +967,7 @@ class SecurityWebServer:
         self.clients: Set = set()
         self.running = False
         self.broadcast_queue = queue.Queue(maxsize=10)
+        self.broadcast_status_lock = asyncio.Lock()
     
     async def handle_client(self, websocket):
         client_addr = websocket.remote_address
@@ -987,42 +989,66 @@ class SecurityWebServer:
             self.clients.discard(websocket)
             logging.info(f"[WebSocket] Client disconnected: {client_addr}")
     
+    async def get_status(self) -> dict:
+        """Get current system status."""
+        return {
+            'type': 'status',
+            'armed': self.system.is_armed,
+            'recording': self.system.is_recording,
+            'muted': self.system.is_muted,
+            'persons': self.system.person_count,
+            'alerts': self.system.alert_count,
+            'breach_active': self.system.breach_active,
+            'breach_duration': int(time.time() - self.system.breach_start_time) if self.system.breach_active else 0,
+            'confidence': self.system.confidence,
+            'model': self.system.model_name,
+            'skeleton': self.system.enable_skeleton,
+            'face': self.system.enable_face,
+            'motion': self.system.enable_motion,
+            'heatmap': self.system.enable_heatmap,
+            'night_vision': self.system.night_vision,
+            'zones': self.system.zone_manager.get_zone_count() if self.system.zone_manager else 0,
+            'faces': len(self.system.face_engine.known_names) if self.system.face_engine else 0,
+            'clients': len(self.clients),
+            'demo_mode': self.system.demo_mode,
+            'camera_available': self.system.camera_available
+        }
+    
+    async def broadcast_status(self):
+        """Broadcast status update to all connected clients."""
+        if not self.clients:
+            return
+        
+        try:
+            status = await self.get_status()
+            message = json.dumps(status)
+            
+            await asyncio.gather(
+                *[client.send(message) for client in self.clients],
+                return_exceptions=True
+            )
+            logging.debug(f"[Status] Broadcasted to {len(self.clients)} clients")
+        except Exception as e:
+            logging.error(f"[Status] Broadcast error: {e}")
+    
     async def handle_command(self, data: Dict, websocket):
         cmd_type = data.get('type')
         
         if cmd_type == 'get_status':
-            status = {
-                'type': 'status',
-                'armed': self.system.is_armed,
-                'recording': self.system.is_recording,
-                'muted': self.system.is_muted,
-                'persons': self.system.person_count,
-                'alerts': self.system.alert_count,
-                'breach_active': self.system.breach_active,
-                'breach_duration': int(time.time() - self.system.breach_start_time) if self.system.breach_active else 0,
-                'confidence': self.system.confidence,
-                'model': self.system.model_name,
-                'skeleton': self.system.enable_skeleton,
-                'face': self.system.enable_face,
-                'motion': self.system.enable_motion,
-                'heatmap': self.system.enable_heatmap,
-                'night_vision': self.system.night_vision,
-                'zones': self.system.zone_manager.get_zone_count() if self.system.zone_manager else 0,
-                'faces': len(self.system.face_engine.known_names) if self.system.face_engine else 0,
-                'clients': len(self.clients),
-                'demo_mode': self.system.demo_mode,
-                'camera_available': self.system.camera_available
-            }
+            status = await self.get_status()
             await websocket.send(json.dumps(status))
         
         elif cmd_type == 'toggle_arm':
             self.system.toggle_arm(data.get('value', False))
+            await self.broadcast_status()
         
         elif cmd_type == 'toggle_record':
             self.system.toggle_record(data.get('value', False))
+            await self.broadcast_status()
         
         elif cmd_type == 'toggle_mute':
             self.system.toggle_mute(data.get('value', False))
+            await self.broadcast_status()
         
         elif cmd_type == 'snapshot':
             snapshot = self.system.take_snapshot()
@@ -1034,27 +1060,35 @@ class SecurityWebServer:
         
         elif cmd_type == 'set_confidence':
             self.system.set_confidence(data.get('value', 0.25))
+            await self.broadcast_status()
         
         elif cmd_type == 'set_model':
             self.system.set_model(data.get('value', 'yolov8n.pt'))
+            await self.broadcast_status()
         
         elif cmd_type == 'toggle_skeleton':
             self.system.toggle_skeleton(data.get('value', False))
+            await self.broadcast_status()
         
         elif cmd_type == 'toggle_face':
             self.system.enable_face = data.get('value', True)
+            await self.broadcast_status()
         
         elif cmd_type == 'toggle_motion':
             self.system.enable_motion = data.get('value', True)
+            await self.broadcast_status()
         
         elif cmd_type == 'toggle_heatmap':
             self.system.enable_heatmap = data.get('value', False)
+            await self.broadcast_status()
         
         elif cmd_type == 'toggle_night_vision':
             self.system.night_vision = data.get('value', False)
+            await self.broadcast_status()
         
         elif cmd_type == 'create_zone':
             self.system.create_zone()
+            await self.broadcast_status()
         
         elif cmd_type == 'add_zone_point':
             x, y = data.get('x', 0), data.get('y', 0)
@@ -1062,9 +1096,11 @@ class SecurityWebServer:
         
         elif cmd_type == 'clear_zones':
             self.system.clear_zones()
+            await self.broadcast_status()
         
         elif cmd_type == 'reload_faces':
             self.system.reload_faces()
+            await self.broadcast_status()
         
         elif cmd_type == 'get_zones':
             zones_data = []
