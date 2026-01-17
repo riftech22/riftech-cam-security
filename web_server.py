@@ -691,10 +691,10 @@ class SecurityWebServer:
             }))
     
     async def broadcast_task(self):
-        """Non-blocking broadcast task."""
+        """Non-blocking broadcast task - Optimized for multi-client."""
         frame_count = 0
         last_log_time = time.time()
-        target_fps = 15  # Realistic target for 14 FPS camera
+        target_fps = 15
         frame_interval = 1.0 / target_fps
         
         while self.system.running:
@@ -705,50 +705,80 @@ class SecurityWebServer:
                 frame = self.system.processing_thread.get_processed_frame()
                 
                 if frame is not None:
+                    # Validate frame before encoding
+                    if frame.size == 0 or frame.shape[0] == 0 or frame.shape[1] == 0:
+                        await asyncio.sleep(frame_interval)
+                        continue
+                    
                     # Ensure BGR format
                     if len(frame.shape) == 2 or frame.shape[2] == 1:
                         frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
                     
-                    # Optimized encoding
-                    encode_params = [
-                        cv2.IMWRITE_JPEG_QUALITY, 70,  # Good quality/speed balance
-                        cv2.IMWRITE_JPEG_OPTIMIZE, 0,  # Skip optimization for speed
-                        cv2.IMWRITE_JPEG_PROGRESSIVE, 0  # Disable progressive
-                    ]
+                    # Encode frame with error handling
+                    try:
+                        encode_start = time.time()
+                        encode_params = [
+                            cv2.IMWRITE_JPEG_QUALITY, 50,  # Lower quality for multi-client
+                            cv2.IMWRITE_JPEG_OPTIMIZE, 0,
+                            cv2.IMWRITE_JPEG_PROGRESSIVE, 0
+                        ]
+                        
+                        success, buffer = cv2.imencode('.jpg', frame, encode_params)
+                        if not success:
+                            logging.error("[Broadcast] Encoding failed")
+                            await asyncio.sleep(frame_interval)
+                            continue
+                        
+                        frame_b64 = base64.b64encode(buffer).decode('utf-8')
+                        encode_time = time.time() - encode_start
+                        
+                        # Create message
+                        message = json.dumps({
+                            'type': 'frame',
+                            'timestamp': time.time(),
+                            'data': frame_b64
+                        })
+                        
+                        # Broadcast to all clients - Handle each separately
+                        if self.clients:
+                            disconnected_clients = []
+                            for client in list(self.clients):
+                                try:
+                                    # Send with timeout to prevent blocking
+                                    await asyncio.wait_for(client.send(message), timeout=0.5)
+                                except asyncio.TimeoutError:
+                                    logging.warning(f"[Broadcast] Timeout for client")
+                                    disconnected_clients.append(client)
+                                except (websockets.exceptions.ConnectionClosed, Exception) as e:
+                                    logging.warning(f"[Broadcast] Client error: {e}")
+                                    disconnected_clients.append(client)
+                            
+                            # Remove disconnected clients
+                            for client in disconnected_clients:
+                                self.clients.discard(client)
+                        
+                        frame_count += 1
+                        
+                        # Log FPS every 2 seconds
+                        if time.time() - last_log_time >= 2.0:
+                            actual_fps = frame_count / (time.time() - last_log_time)
+                            logging.info(f"[Broadcast] FPS: {actual_fps:.1f}, Clients: {len(self.clients)}, Encode: {encode_time*1000:.1f}ms")
+                            frame_count = 0
+                            last_log_time = time.time()
                     
-                    _, buffer = cv2.imencode('.jpg', frame, encode_params)
-                    frame_b64 = base64.b64encode(buffer).decode('utf-8')
-                    
-                    message = json.dumps({
-                        'type': 'frame',
-                        'timestamp': time.time(),
-                        'data': frame_b64
-                    })
-                    
-                    # Non-blocking broadcast
-                    if self.clients:
-                        await asyncio.gather(
-                            *[client.send(message) for client in self.clients],
-                            return_exceptions=True
-                        )
-                    
-                    frame_count += 1
-                
-                # Log FPS every 2 seconds
-                if time.time() - last_log_time >= 2.0:
-                    actual_fps = frame_count / (time.time() - last_log_time)
-                    logging.info(f"[Broadcast] FPS: {actual_fps:.1f}, Clients: {len(self.clients)}")
-                    frame_count = 0
-                    last_log_time = time.time()
+                    except Exception as e:
+                        logging.error(f"[Broadcast] Encoding error: {e}")
+                        await asyncio.sleep(frame_interval)
+                        continue
                 
                 # Calculate sleep time
                 elapsed = time.time() - start_time
-                sleep_time = max(0, frame_interval - elapsed)
+                sleep_time = max(0.01, frame_interval - elapsed)
                 await asyncio.sleep(sleep_time)
             
             except Exception as e:
-                logging.error(f"[Broadcast] Error: {e}")
-                await asyncio.sleep(0.01)
+                logging.error(f"[Broadcast] Fatal error: {e}")
+                await asyncio.sleep(0.05)
     
     async def start(self):
         """Start server dengan multi-threading."""
