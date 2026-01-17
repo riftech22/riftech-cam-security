@@ -16,10 +16,10 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Check working directory
-WORK_DIR="/root/riftech-cam-security"
-if [ ! -d "$WORK_DIR" ]; then
-    echo "Error: Directory $WORK_DIR does not exist"
-    echo "Please run this script from the project root"
+WORK_DIR=$(pwd)
+if [ ! -f "$WORK_DIR/web_server.py" ]; then
+    echo "Error: web_server.py not found"
+    echo "Please run this script from project root directory"
     exit 1
 fi
 

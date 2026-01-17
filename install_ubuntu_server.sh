@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Riftech Cam Security - Ubuntu Server 22 Installation Script
-# This script installs the security system for headless Ubuntu Server 22
+# This script installs security system for headless Ubuntu Server 22 with V380 support
 ###############################################################################
 
 set -e  # Exit on any error
@@ -36,6 +36,7 @@ echo "╔═══════════════════════�
 echo "║                                                               ║"
 echo "║   🛡️  RIFTECH CAM SECURITY - UBUNTU SERVER INSTALLER          ║"
 echo "║   Headless Installation for Ubuntu Server 22                 ║"
+echo "║   V380 Dual-Lens Camera Support                              ║"
 echo "║                                                               ║"
 echo "╚═══════════════════════════════════════════════════════════════╝"
 echo ""
@@ -44,7 +45,7 @@ echo ""
 if [ "$EUID" -eq 0 ]; then
     CURRENT_USER="root"
     CURRENT_HOME="/root"
-    print_warning "Running as root user. Creating service for root user."
+    print_warning "Running as root user."
 else
     CURRENT_USER=$(whoami)
     CURRENT_HOME=$(eval echo ~$CURRENT_USER)
@@ -56,16 +57,29 @@ echo ""
 
 # Ask for camera configuration
 print_warning "Camera Configuration"
-read -p "Enter RTSP URL (default: rtsp://admin:password@IP:554/live/ch00_0): " RTSP_URL
+read -p "Enter RTSP URL (default: rtsp://admin:password@IP:554/live): " RTSP_URL
 read -p "Enter server IP address (default: 10.26.27.104): " SERVER_IP
 
 # Set defaults if empty
-RTSP_URL=${RTSP_URL:-"rtsp://admin:Kuncong203@10.26.27.196:554/live/ch00_0"}
+RTSP_URL=${RTSP_URL:-"rtsp://admin:Kuncong203@10.26.27.196:554/h264/ch1/main/av_stream"}
 SERVER_IP=${SERVER_IP:-"10.26.27.104"}
 
 echo ""
 print_info "Camera RTSP URL: $RTSP_URL"
 print_info "Server IP: $SERVER_IP"
+echo ""
+
+# Ask for V380 mode
+print_warning "Camera Type"
+read -p "Is this a V380 dual-lens camera? (y/n, default: y): " V380_MODE
+V380_MODE=${V380_MODE:-"y"}
+if [ "$V380_MODE" = "y" ] || [ "$V380_MODE" = "Y" ]; then
+    V380_MODE_ENABLED=true
+    print_success "V380 dual-lens mode enabled"
+else
+    V380_MODE_ENABLED=false
+    print_info "Normal camera mode"
+fi
 echo ""
 
 # Ask for Telegram configuration
@@ -101,7 +115,8 @@ sudo apt install -y \
     cmake \
     g++ \
     wget \
-    curl
+    curl \
+    ffmpeg
 
 print_success "Python and development tools installed"
 
@@ -188,9 +203,22 @@ print_success "Python dependencies installed"
 # Step 8: Configure application
 print_info "Step 8/8: Configuring application..."
 
+# Copy config.example.py to config.py if config.py doesn't exist
+if [ ! -f "config.py" ]; then
+    print_info "Creating config.py from template..."
+    cp config.example.py config.py
+fi
+
 # Update config.py with RTSP URL
 print_info "Updating camera configuration..."
 sed -i "s|CAMERA_SOURCE =.*|CAMERA_SOURCE = r\"$RTSP_URL\"|g" config.py
+
+# Update config.py with V380 mode
+if [ "$V380_MODE_ENABLED" = true ]; then
+    print_info "Enabling V380 mode in config..."
+    sed -i 's/V380_MODE = False/V380_MODE = True/g' config.py
+    print_success "V380 mode enabled"
+fi
 
 # Update config.py with Telegram credentials if provided
 if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
@@ -200,41 +228,26 @@ if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
     print_success "Telegram configuration updated"
 fi
 
-print_success "Camera configuration updated"
-
-# Update systemd service file
-print_info "Configuring systemd service..."
-sed -i "s|User=YOUR_USERNAME|User=$CURRENT_USER|g" security-system-web.service
-sed -i "s|WorkingDirectory=/home/YOUR_USERNAME/riftech-cam-security|WorkingDirectory=$CURRENT_HOME/riftech-cam-security|g" security-system-web.service
-sed -i "s|Environment=\"PATH=/home/YOUR_USERNAME/riftech-cam-security/venv/bin\"|Environment=\"PATH=$CURRENT_HOME/riftech-cam-security/venv/bin\"|g" security-system-web.service
-sed -i "s|ExecStart=/home/YOUR_USERNAME/riftech-cam-security/start_web.sh|ExecStart=$CURRENT_HOME/riftech-cam-security/start_web.sh|g" security-system-web.service
-
-print_success "Systemd service configured"
-
-# Install and enable service
-print_info "Installing systemd service..."
-sudo cp security-system-web.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable security-system-web
-
-print_success "Systemd service installed and enabled"
+print_success "Configuration updated"
 
 # Create directories
 print_info "Creating necessary directories..."
-mkdir -p recordings snapshots alerts trusted_faces logs fixed_images
+mkdir -p recordings snapshots alerts trusted_faces logs
 
 print_success "Directories created"
 
 # Make scripts executable
 print_info "Making scripts executable..."
-chmod +x start_web.sh
+chmod +x start_both_servers.sh
+chmod +x stop_both_servers.sh
+chmod +x install_services.sh
 chmod +x install_ubuntu_server.sh
 
 print_success "Scripts made executable"
 
 # Download YOLO models
 print_info "Downloading YOLO models (first run only)..."
-python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')" 2>/dev/null || print_warning "YOLOv8n model download failed (will download on first run)"
+python -c "from ultralytics import YOLO; YOLO('yolov8s.pt')" 2>/dev/null || print_warning "YOLOv8s model download failed (will download on first run)"
 
 print_success "Setup complete!"
 echo ""
@@ -250,6 +263,7 @@ echo "Configuration:"
 echo "  - User: $CURRENT_USER"
 echo "  - Server IP: $SERVER_IP"
 echo "  - Camera RTSP: $RTSP_URL"
+echo "  - Camera Type: $([ "$V380_MODE_ENABLED" = true ] && echo "V380 Dual-Lens" || echo "Normal Camera")"
 echo "  - Telegram Integration: $([ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ] && echo "Enabled" || echo "Disabled")"
 echo "  - Project directory: $CURRENT_HOME/riftech-cam-security"
 echo ""
@@ -258,25 +272,17 @@ echo "  - Web Interface: http://$SERVER_IP:8080/web.html"
 echo "  - WebSocket: ws://$SERVER_IP:8765"
 echo ""
 echo "Commands:"
-echo "  - Start service: sudo systemctl start security-system-web"
-echo "  - Stop service: sudo systemctl stop security-system-web"
-echo "  - Restart service: sudo systemctl restart security-system-web"
-echo "  - Check status: sudo systemctl status security-system-web"
-echo "  - View logs: sudo journalctl -u security-system-web -f"
+echo "  - Start manually: ./start_both_servers.sh"
+echo "  - Install services: sudo ./install_services.sh"
+echo "  - Start service: sudo systemctl start security-system-v380"
+echo "  - Stop service: sudo systemctl stop security-system-v380"
+echo "  - Restart service: sudo systemctl restart security-system-v380"
+echo "  - Check status: sudo systemctl status security-system-v380"
+echo "  - View logs: sudo journalctl -u security-system-v380 -f"
 echo ""
 print_warning "IMPORTANT: Make sure your RTSP camera is accessible from this server"
 echo ""
-print_info "Starting the service now..."
-sudo systemctl start security-system-web
-sleep 3
-
-if sudo systemctl is-active --quiet security-system-web; then
-    print_success "Service started successfully!"
-    sudo systemctl status security-system-web --no-pager
-else
-    print_error "Service failed to start. Check logs with: sudo journalctl -u security-system-web -n 50"
-fi
-
+print_info "To enable auto-start on boot, run: sudo ./install_services.sh"
 echo ""
-print_info "Installation complete! Access the web interface at: http://$SERVER_IP:8080/web.html"
+print_info "To start servers manually, run: ./start_both_servers.sh"
 echo ""

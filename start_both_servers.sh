@@ -1,16 +1,29 @@
 #!/bin/bash
 # Script untuk menjalankan HTTP server dan WebSocket server
 
+# Check if virtual environment exists
+if [ ! -d "venv" ]; then
+    echo "Error: Virtual environment not found!"
+    echo "Please create it first: python3 -m venv venv"
+    exit 1
+fi
+
+# Activate virtual environment
+source venv/bin/activate
+
 echo "=========================================="
 echo "  Riftech Security System"
 echo "  Starting HTTP and WebSocket Servers"
 echo "=========================================="
 echo ""
 
+# Create logs directory
+mkdir -p logs
+
 # Kill existing processes
 echo "[1/5] Killing existing processes..."
-pkill -f "python3 web_server.py" 2>/dev/null || true
-pkill -f "python3 http_server.py" 2>/dev/null || true
+pkill -f "web_server.py" 2>/dev/null || true
+pkill -f "http_server.py" 2>/dev/null || true
 sleep 1
 echo "      ✓ Done"
 echo ""
@@ -27,7 +40,7 @@ echo ""
 
 # Start WebSocket server
 echo "[3/5] Starting WebSocket server (port 8765)..."
-nohup python3 web_server.py $V380_MODE > websocket.log 2>&1 &
+nohup python web_server.py $V380_MODE > logs/websocket.log 2>&1 &
 WEBSOCKET_PID=$!
 echo "      ✓ WebSocket server started (PID: $WEBSOCKET_PID)"
 sleep 2
@@ -35,7 +48,7 @@ echo ""
 
 # Start HTTP server
 echo "[4/5] Starting HTTP server (port 8080)..."
-nohup python3 http_server.py > http.log 2>&1 &
+nohup python http_server.py > logs/http.log 2>&1 &
 HTTP_PID=$!
 echo "      ✓ HTTP server started (PID: $HTTP_PID)"
 sleep 1
@@ -52,8 +65,8 @@ echo "Access Web Interface:"
 echo "  http://YOUR_SERVER_IP:8080/web.html"
 echo ""
 echo "Monitor Logs:"
-echo "  WebSocket: tail -f websocket.log"
-echo "  HTTP:      tail -f http.log"
+echo "  WebSocket: tail -f logs/websocket.log"
+echo "  HTTP:      tail -f logs/http.log"
 echo ""
 echo "Stop Servers:"
 echo "  ./stop_both_servers.sh"

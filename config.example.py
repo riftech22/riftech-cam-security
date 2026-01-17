@@ -41,12 +41,11 @@ class Config:
     SNAPSHOTS_DIR = BASE_DIR / "snapshots"
     ALERTS_DIR = BASE_DIR / "alerts"
     TRUSTED_FACES_DIR = BASE_DIR / "trusted_faces"
-    FIXED_IMAGES_DIR = BASE_DIR / "fixed_images"
     LOGS_DIR = BASE_DIR / "logs"
     DB_PATH = BASE_DIR / "security.db"
     
     # Create directories if they don't exist
-    for d in [RECORDINGS_DIR, SNAPSHOTS_DIR, ALERTS_DIR, TRUSTED_FACES_DIR, FIXED_IMAGES_DIR, LOGS_DIR]:
+    for d in [RECORDINGS_DIR, SNAPSHOTS_DIR, ALERTS_DIR, TRUSTED_FACES_DIR, LOGS_DIR]:
         d.mkdir(exist_ok=True)
     
     # Camera Configuration
@@ -54,7 +53,14 @@ class Config:
     # 1. RTSP camera: rtsp://username:password@IP:PORT/path
     # 2. USB camera: 0, 1, 2, etc. (device number)
     # 3. Video file: /path/to/video.mp4
+    
+    # V380 Dual-Lens Camera Example:
+    # CAMERA_SOURCE = r"rtsp://admin:password@10.26.27.196:554/h264/ch1/main/av_stream"
     CAMERA_SOURCE = r"rtsp://admin:password@192.168.1.100:554/live/ch00_0"
+    
+    # V380 Dual-Lens Mode
+    # Set to True if using V380 dual-lens camera (auto-splits frame vertically)
+    V380_MODE = False  # Set to True for V380 cameras
     
     # Video Settings
     FRAME_WIDTH = 1280
