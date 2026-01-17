@@ -43,9 +43,18 @@ except ImportError as e:
     TELEGRAM_AVAILABLE = False
 
 # Try importing PySide6 for TelegramBot, fallback if not available
+# Force direct mode on headless servers (no display)
+import os
+HAS_DISPLAY = 'DISPLAY' in os.environ or 'WAYLAND_DISPLAY' in os.environ
+
 try:
     from PyQt6.QtCore import QCoreApplication, QThread
-    QT_AVAILABLE = True
+    # Only enable Qt mode if display is available
+    if HAS_DISPLAY:
+        QT_AVAILABLE = True
+    else:
+        QT_AVAILABLE = False
+        logging.warning("[Import] No display detected, forcing direct Telegram mode")
 except ImportError:
     QT_AVAILABLE = False
     logging.warning("[Import] PyQt6 not available, TelegramBot polling will be simulated")
