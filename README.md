@@ -58,6 +58,41 @@
 
 ## 🚀 Quick Start
 
+### ⚡ EASIEST INSTALLATION (Recommended!)
+
+```bash
+# Clone repository
+git clone https://github.com/riftech22/riftech-cam-security.git
+cd riftech-cam-security
+
+# Run automatic installer (ONE COMMAND!)
+sudo ./INSTALL.sh
+
+# The installer will:
+# ✅ Update system packages
+# ✅ Install all dependencies automatically
+# ✅ Setup Python virtual environment
+# ✅ Clone/download project
+# ✅ Install Python packages
+# ✅ Setup configuration file
+# ✅ Make all scripts executable
+# ✅ Install systemd services
+# ✅ Verify installation
+# ✅ Print next steps
+
+# After installation:
+cd /opt/riftech-cam-security
+nano config.py  # Edit camera and Telegram settings
+./start_web.sh    # Start the system
+
+# Verify installation (Optional):
+./verify_installation.sh
+```
+
+**That's it! Everything is installed automatically!** 🎉
+
+---
+
 ### System Requirements
 
 **Minimum:**
@@ -85,9 +120,11 @@ sudo apt install -y ffmpeg libopencv-dev libavcodec-dev libavformat-dev libswsca
 
 **Note**: The automatic installer (`install_ubuntu_server.sh`) will install all prerequisites automatically.
 
-### Installation
+### Installation (Alternative Methods)
 
-**Option 1: Automatic Installation (Recommended)**
+**⚠️ Note:** The automatic installer (`sudo ./INSTALL.sh`) above is the easiest method. Use the alternatives below only if you have specific needs.
+
+**Option 1: Manual Installation**
 
 ```bash
 # Clone repository
@@ -106,8 +143,6 @@ sudo ./install_ubuntu_server.sh
 # - Provide setup instructions
 ```
 
-**Option 2: Manual Installation**
-
 ```bash
 # 1. Clone repository
 git clone https://github.com/riftech22/riftech-cam-security.git
@@ -121,23 +156,34 @@ source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# 4. Configure V380 camera
+# 4. Configure camera
 cp config.example.py config.py
-nano config.py  # Edit RTSP_URL and V380_MODE
+nano config.py  # Edit CAMERA_SOURCE and other settings
 ```
+
+**Option 2: Using Ubuntu Server Script**
 
 ### Start System
 
-**Option 1: Manual Start (Quick Test)**
+**Option 1: Normal Start (Recommended)**
 ```bash
-# Start both servers
-./start_both_servers.sh
+# Start WebSocket + HTTP servers
+./start_web.sh
 
 # Access web interface
 # http://YOUR_IP:8080/web.html
 ```
 
-**Option 2: Auto-Start on Boot (Recommended)**
+**Option 2: Debug Mode (Shows All Output)**
+```bash
+# Run in foreground to see all logs
+./debug_run.sh
+
+# Great for troubleshooting!
+# Press Ctrl+C to stop
+```
+
+**Option 3: Auto-Start on Boot (Systemd)**
 ```bash
 # Install systemd services
 sudo ./install_services.sh
@@ -146,13 +192,16 @@ sudo ./install_services.sh
 # Check status: sudo systemctl status security-system-v380
 ```
 
-**Option 3: Full Installation + Auto-Start (Best for Production)**
+**Option 4: Enable Auto-Start After Manual Installation**
 ```bash
-# Run full installer with auto-start
-sudo ./install_ubuntu_server.sh
+# After running sudo ./INSTALL.sh
+# Services are installed but not enabled
 
-# Then enable auto-start
-sudo ./install_services.sh
+# Enable auto-start
+sudo systemctl enable --now security-system-v380
+
+# Check status
+sudo systemctl status security-system-v380
 ```
 
 ---
@@ -667,31 +716,39 @@ This project is open source and available under the MIT License.
 
 ## 🎉 Ready to Secure Your Space?
 
-**Clone, Install, and Start Monitoring Today!**
+### ⚡ SUPER EASY INSTALLATION:
 
-**Quick Installation:**
 ```bash
 git clone https://github.com/riftech22/riftech-cam-security.git
 cd riftech-cam-security
-sudo ./install_ubuntu_server.sh  # Auto-configure everything
+sudo ./INSTALL.sh  # ONE COMMAND - INSTALLS EVERYTHING!
 ```
 
-**Manual Installation:**
+### After Installation:
+
 ```bash
-git clone https://github.com/riftech22/riftech-cam-security.git
-cd riftech-cam-security
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-cp config.example.py config.py
-nano config.py  # Configure camera and V380_MODE
-./start_both_servers.sh
+cd /opt/riftech-cam-security
+nano config.py              # Edit your camera and Telegram settings
+./start_web.sh              # Start the system
+# Then open: http://YOUR_IP:8080/web.html
 ```
 
-**Enable Auto-Start:**
+### Want Auto-Start on Boot?
+
 ```bash
-sudo ./install_services.sh
+sudo systemctl enable --now security-system-v380
+# Done! System starts automatically on boot
 ```
+
+### Need Help?
+
+- 📖 **Read this README** - All features explained
+- ✅ **Verify installation** - `./verify_installation.sh` (checks everything)
+- 🐛 **Check logs** - `tail -100 logs/websocket.log`
+- 🔍 **Debug mode** - `./debug_run.sh` (shows all output)
+- 💬 **GitHub Issues** - https://github.com/riftech22/riftech-cam-security/issues
+
+---
 
 **Made with ❤️ by Riftech**
 
