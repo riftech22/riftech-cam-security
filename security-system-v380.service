@@ -1,0 +1,18 @@
+[Unit]
+Description=Riftech Security System with V380 Support
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/riftech-cam-security
+Environment="PATH=/root/riftech-cam-security/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/root/riftech-cam-security/venv/bin/python3 /root/riftech-cam-security/web_server.py --v380
+Restart=always
+RestartSec=10
+StandardOutput=append:/root/riftech-cam-security/logs/websocket.log
+StandardError=append:/root/riftech-cam-security/logs/websocket_error.log
+
+[Install]
+WantedBy=multi-user.target
