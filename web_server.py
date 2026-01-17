@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+ #!/usr/bin/env python3
 """Web Server untuk Security System - Multi-threaded Version (Like Frigate)."""
 
 import asyncio
@@ -834,8 +834,11 @@ class SecurityWebServer:
         """Non-blocking broadcast task - Fix frame stacking with validation."""
         frame_count = 0
         last_log_time = time.time()
+        last_frame_time = time.time()
         target_fps = 15
         frame_interval = 1.0 / target_fps
+        
+        logging.info("[Broadcast] Starting broadcast task...")
         
         while self.system.running:
             try:
@@ -845,10 +848,12 @@ class SecurityWebServer:
                 if self.system.use_v380_ffmpeg:
                     # Get frame directly from V380 processor
                     v380_frame = self.system._get_v380_frame()
-                    if v380_frame is not None:
+                    if v380_frame is not None and v380_frame.size > 0:
                         frame = v380_frame
+                        logging.debug(f"[Broadcast] Got V380 frame: {frame.shape}")
                     else:
-                        await asyncio.sleep(frame_interval)
+                        logging.warning("[Broadcast] No V380 frame available, retrying...")
+                        await asyncio.sleep(0.1)
                         continue
                 else:
                     # Get frame from processing thread
@@ -857,10 +862,10 @@ class SecurityWebServer:
                         continue
                     frame = self.system.processing_thread.get_processed_frame()
                 
-                if frame is not None:
+                if frame is not None and frame.size > 0:
                     # Validate frame before encoding
-                    if frame.size == 0 or frame.shape[0] == 0 or frame.shape[1] == 0:
-                        logging.warning("[Broadcast] Invalid frame, skipping")
+                    if frame.shape[0] == 0 or frame.shape[1] == 0:
+                        logging.warning(f"[Broadcast] Invalid frame shape: {frame.shape}, skipping")
                         await asyncio.sleep(frame_interval)
                         continue
                     
@@ -897,20 +902,27 @@ class SecurityWebServer:
                                     *[client.send(message) for client in self.clients],
                                     return_exceptions=True
                                 )
+                                logging.debug(f"[Broadcast] Sent frame to {len(self.clients)} clients")
                             except Exception as e:
                                 logging.warning(f"[Broadcast] Send error: {e}")
+                        else:
+                            logging.debug("[Broadcast] No connected clients, skipping send")
                         
-                        frame_count +=1
+                        frame_count += 1
+                        last_frame_time = time.time()
                     
                     except Exception as e:
                         logging.error(f"[Broadcast] Encoding error: {e}")
+                        import traceback
+                        traceback.print_exc()
                         await asyncio.sleep(frame_interval)
                         continue
                 
                 # Log FPS every 2 seconds
                 if time.time() - last_log_time >= 2.0:
                     actual_fps = frame_count / (time.time() - last_log_time)
-                    logging.info(f"[Broadcast] FPS: {actual_fps:.1f}, Clients: {len(self.clients)}")
+                    time_since_last_frame = time.time() - last_frame_time
+                    logging.info(f"[Broadcast] FPS: {actual_fps:.1f}, Clients: {len(self.clients)}, Last frame: {time_since_last_frame:.1f}s ago")
                     frame_count = 0
                     last_log_time = time.time()
                 
