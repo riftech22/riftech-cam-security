@@ -1218,6 +1218,12 @@
             night_vision: false
         };
         
+        // Canvas dimensions - will be set when video loads
+        let canvasWidth = 1280;
+        let canvasHeight = 720;
+        let videoNaturalWidth = 1280;
+        let videoNaturalHeight = 720;
+        
         // Load saved state from localStorage
         function loadSavedState() {
             try {
@@ -1253,8 +1259,23 @@
             const canvas = document.getElementById('video-canvas');
             const video = document.getElementById('video-feed');
             
-            canvas.width = 1280;
-            canvas.height = 720;
+            // Set initial canvas size
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            
+            // Update canvas size when video loads
+            video.onload = () => {
+                if (video.naturalWidth && video.naturalHeight) {
+                    videoNaturalWidth = video.naturalWidth;
+                    videoNaturalHeight = video.naturalHeight;
+                    canvasWidth = video.naturalWidth;
+                    canvasHeight = video.naturalHeight;
+                    canvas.width = canvasWidth;
+                    canvas.height = canvasHeight;
+                    console.log(`[Canvas] Video loaded: ${video.naturalWidth}x${video.naturalHeight}`);
+                    addLog(`Canvas resized to ${canvasWidth}x${canvasHeight}`, 'info');
+                }
+            };
             
             canvas.addEventListener('click', (e) => {
                 if (isDrawing) {
@@ -1329,6 +1350,25 @@
         
         function updateVideoFeed(data) {
             const img = document.getElementById('video-feed');
+            const canvas = document.getElementById('video-canvas');
+            
+            // Load image first to get dimensions
+            const tempImg = new Image();
+            tempImg.onload = () => {
+                // Update canvas size to match video frame
+                if (tempImg.width !== canvasWidth || tempImg.height !== canvasHeight) {
+                    videoNaturalWidth = tempImg.width;
+                    videoNaturalHeight = tempImg.height;
+                    canvasWidth = tempImg.width;
+                    canvasHeight = tempImg.height;
+                    canvas.width = canvasWidth;
+                    canvas.height = canvasHeight;
+                    console.log(`[Canvas] Frame size updated: ${canvasWidth}x${canvasHeight}`);
+                    addLog(`Frame detected: ${canvasWidth}x${canvasHeight}`, 'info');
+                }
+            };
+            tempImg.src = `data:image/jpeg;base64,${data}`;
+            
             // Data URL - no cache needed for data URLs
             img.src = `data:image/jpeg;base64,${data}`;
         }
@@ -1627,11 +1667,14 @@
             const canvas = document.getElementById('video-canvas');
             const rect = canvas.getBoundingClientRect();
             
-            const scaleX = 1280 / rect.width;
-            const scaleY = 720 / rect.height;
+            // Scale based on actual canvas dimensions
+            const scaleX = canvasWidth / rect.width;
+            const scaleY = canvasHeight / rect.height;
             
             const x = Math.round((event.clientX - rect.left) * scaleX);
             const y = Math.round((event.clientY - rect.top) * scaleY);
+            
+            console.log(`[Zone] Click position: canvas=${canvasWidth}x${canvasHeight}, display=${rect.width.toFixed(0)}x${rect.height.toFixed(0)}, scale=${scaleX.toFixed(2)}x${scaleY.toFixed(2)}, point=(${x}, ${y})`);
             
             sendCommand('add_zone_point', { x, y });
             zonePoints.push({ x, y });
