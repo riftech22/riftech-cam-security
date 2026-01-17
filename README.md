@@ -190,6 +190,8 @@ sudo ./install_ubuntu_server.sh
 # The installer will ask:
 # - Is this a V380 dual-lens camera? (default: yes)
 # - Enter RTSP URL
+# - Telegram Bot Token (optional)
+# - Telegram Chat ID (optional)
 # It will automatically enable V380_MODE = True
 ```
 
@@ -205,6 +207,10 @@ V380_MODE = True  # Enable V380 split frame processing
 # Model settings
 yolo_model = 'yolov8s.pt'  # Use small model for better accuracy
 YOLO_CONFIDENCE = 0.25  # 25% confidence threshold
+
+# Telegram Bot (Optional - for alerts)
+TELEGRAM_BOT_TOKEN = "your_bot_token_from_botfather"
+TELEGRAM_CHAT_ID = "your_chat_id_from_userinfobot"
 ```
 
 ### Example RTSP URL for V380
@@ -306,6 +312,122 @@ cp photo2.jpg trusted_faces/
 
 # Reload from web interface
 # Click "RELOAD FACES" button
+```
+
+### Setting Up Telegram Alerts (Optional)
+
+**Why Use Telegram?**
+- 🚨 Receive instant alerts when person detected
+- 📸 Get photo of detected person
+- 🔔 Get notified when system is armed/disarmed
+- 📱 Access alerts anywhere via Telegram app
+- 💾 All alert photos saved to `alerts/` directory
+
+**Step 1: Create Telegram Bot**
+1. Open Telegram and search for **@BotFather**
+2. Send `/newbot` command
+3. Follow instructions to name your bot (e.g., "SecurityBot")
+4. BotFather will give you **API Token** (format: `123456789:ABCdefGHIjklMNOpqrSTUvwxYZ`)
+5. Copy this token - you'll need it!
+
+**Step 2: Get Your Chat ID**
+1. Open Telegram and search for **@userinfobot**
+2. Send any message to the bot
+3. It will reply with your **Chat ID** (format: `123456789`)
+4. Copy this number - you'll need it!
+
+**Step 3: Configure in System**
+
+**Option A: Using Installer (Recommended)**
+```bash
+sudo ./install_ubuntu_server.sh
+# When prompted:
+# Enter Telegram Bot Token (from @BotFather): <paste your token>
+# Enter Telegram Chat ID (from @userinfobot): <paste your chat ID>
+```
+
+**Option B: Manual Configuration**
+```bash
+# Edit config.py
+nano config.py
+
+# Add your credentials:
+TELEGRAM_BOT_TOKEN = "123456789:ABCdefGHIjklMNOpqrSTUvwxYZ"
+TELEGRAM_CHAT_ID = "123456789"
+```
+
+**Step 4: Restart Server**
+```bash
+# Stop current servers
+./stop_both_servers.sh
+
+# Start again
+./start_both_servers.sh
+```
+
+**What You'll Receive:**
+
+**Person Detection Alert:**
+```
+🚨 *SECURITY ALERT*
+
+👤 *Person Detected*
+⏰ Time: 2026-01-17 13:00:00
+📊 Confidence: 85%
+📍 Location: rtsp://admin:password@192.168.1.100:554/live
+
+📸 Alert photo attached
+```
+
+**System Status Update:**
+```
+🔒 *ARMED*
+
+⏰ 2026-01-17 13:00:00
+```
+
+**Alert Photo Features:**
+- Automatic timestamp overlay
+- Detection confidence percentage
+- Cropped person frame only (no background)
+- Saved to `alerts/` directory
+- 60-second cooldown between alerts (prevents spam)
+
+**Telegram Controls:**
+You can also control the system via Telegram:
+- **🔒 Arm System** - Activate monitoring
+- **🔓 Disarm** - Deactivate monitoring
+- **📸 Snapshot** - Take screenshot
+- **⏺ Record** - Start/stop recording
+- **🔇 Mute** - Toggle alarm sound
+- **📊 Status** - Get system status
+- **👤 Reload Faces** - Reload trusted faces
+
+**Troubleshooting Telegram:**
+
+**Alerts not arriving?**
+```bash
+# Check if Telegram is enabled
+grep TELEGRAM_BOT_TOKEN config.py
+grep TELEGRAM_CHAT_ID config.py
+
+# Check server logs
+tail -f logs/websocket.log | grep Telegram
+
+# Test manually (Python)
+python3 -c "import requests; requests.post('https://api.telegram.org/botTOKEN/getUpdates')"
+```
+
+**Bot not responding?**
+1. Check internet connection
+2. Verify token and chat ID are correct
+3. Check if bot has been started (send `/start` to bot)
+4. Ensure system is ARMED (alerts only sent when armed)
+
+**Too many alerts?**
+```python
+# In config.py, adjust cooldown:
+# Default is 60 seconds, increase to 300 (5 minutes)
 ```
 
 ---
