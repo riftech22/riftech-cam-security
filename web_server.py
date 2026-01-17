@@ -611,32 +611,53 @@ class SecurityWebSystem:
                 except Exception as e:
                     logging.error(f"[MotionBoxes] Error: {e}")
             
-            # Draw persons dengan bounding boxes
+            # Draw persons dan check zone breaches
+            breached_zones = []
             if persons:
                 try:
                     for person in persons:
                         x1, y1, x2, y2 = person.bbox
                         # Validate coordinates
                         if x1 >= 0 and y1 >= 0 and x2 <= w and y2 <= h:
-                            color = (0, 0, 255) if self.breach_active else (0, 255, 0)
+                            # Calculate person center for zone checking
+                            person_cx = (x1 + x2) // 2
+                            person_cy = (y1 + y2) // 2
+                            
+                            # Check if person is in any zone
+                            in_zone = False
+                            if self.zone_manager and self.is_armed:
+                                for zone in self.zone_manager.zones:
+                                    if zone.is_complete and zone.contains_point(person_cx, person_cy):
+                                        in_zone = True
+                                        if zone.zone_id not in breached_zones:
+                                            breached_zones.append(zone.zone_id)
+                            
+                            # Set breach state if person in zone
+                            self.breach_active = in_zone
+                            
+                            # Color based on breach status
+                            color = (0, 0, 255) if in_zone else (0, 255, 0)
+                            
                             cv2.rectangle(output, (x1, y1), (x2, y2), color, 2)
                             cv2.putText(output, f"Person {person.confidence:.0%}", 
                                        (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
                             
-                            # Send Telegram alert if armed and cooldown passed
-                            if self.is_armed and self.telegram_enabled:
+                            # Send Telegram alert if armed and in zone
+                            if self.is_armed and in_zone and self.telegram_enabled:
                                 self._send_person_alert(output, person, x1, y1, x2, y2)
                 except Exception as e:
                     logging.error(f"[PersonBoxes] Error: {e}")
             
-            # Draw zones
+            # Update breach start time
+            if self.breach_active and self.breach_start_time == 0:
+                self.breach_start_time = time.time()
+            elif not self.breach_active:
+                self.breach_start_time = 0
+            
+            # Draw zones with breach status
             if self.zone_manager:
                 try:
-                    breached_ids = []
-                    if self.breach_active:
-                        for zone in self.zone_manager.zones:
-                            breached_ids.append(zone.zone_id)
-                    output = self.zone_manager.draw_all(output, breached_ids, self.is_armed)
+                    output = self.zone_manager.draw_all(output, breached_zones, self.is_armed)
                 except Exception as e:
                     logging.error(f"[Zones] Error: {e}")
             
