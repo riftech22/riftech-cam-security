@@ -236,6 +236,14 @@ mkdir -p recordings snapshots alerts trusted_faces logs
 
 print_success "Directories created"
 
+# Test RTSP connection
+print_info "Testing RTSP connection (optional, press Ctrl+C to skip)..."
+timeout 5 ffprobe -v quiet -print_format json -show_streams "$RTSP_URL" 2>/dev/null > /tmp/rtsp_test.json || print_warning "RTSP connection test failed (will retry on first run)"
+if [ -f "/tmp/rtsp_test.json" ]; then
+    print_success "RTSP connection successful!"
+    rm /tmp/rtsp_test.json
+fi
+
 # Make scripts executable
 print_info "Making scripts executable..."
 chmod +x start_both_servers.sh
@@ -251,6 +259,24 @@ python -c "from ultralytics import YOLO; YOLO('yolov8s.pt')" 2>/dev/null || prin
 
 print_success "Setup complete!"
 echo ""
+
+# Test server startup
+print_info "Testing server startup (5 seconds)..."
+./start_both_servers.sh &
+SERVER_PID=$!
+sleep 5
+
+# Check if servers are running
+if pgrep -f "web_server.py" > /dev/null && pgrep -f "http_server.py" > /dev/null; then
+    print_success "Servers started successfully!"
+    echo ""
+    print_warning "Stopping test servers..."
+    pkill -f "web_server.py"
+    pkill -f "http_server.py"
+    sleep 2
+else
+    print_warning "Server startup test failed (check logs: logs/websocket.log)"
+fi
 
 # Final summary
 echo "╔═══════════════════════════════════════════════════════════════╗"
