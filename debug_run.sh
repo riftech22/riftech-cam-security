@@ -62,7 +62,7 @@ echo "╚═══════════════════════�
 echo ""
 
 # Run in foreground with all output visible
-python web_server.py
+python3 web_server.py
 
 # If server exits
 echo ""
