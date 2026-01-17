@@ -58,6 +58,22 @@
 
 ## 🚀 Quick Start
 
+### System Requirements
+
+**Minimum:**
+- Ubuntu 20.04+ / Debian 11+
+- Python 3.8+
+- 2GB RAM (4GB recommended)
+- 500MB storage (5GB+ for recordings)
+- V380 dual-lens or RTSP camera
+
+**Recommended:**
+- Ubuntu 22.04 LTS
+- Python 3.10+
+- 4GB+ RAM
+- 20GB+ SSD
+- Network connection for streaming
+
 ### Prerequisites
 
 ```bash
@@ -67,7 +83,30 @@ sudo apt install -y python3 python3-pip python3-venv python3-dev
 sudo apt install -y ffmpeg libopencv-dev libavcodec-dev libavformat-dev libswscale-dev
 ```
 
+**Note**: The automatic installer (`install_ubuntu_server.sh`) will install all prerequisites automatically.
+
 ### Installation
+
+**Option 1: Automatic Installation (Recommended)**
+
+```bash
+# Clone repository
+git clone https://github.com/riftech22/riftech-cam-security.git
+cd riftech-cam-security
+
+# Run automatic installer
+sudo ./install_ubuntu_server.sh
+
+# The installer will:
+# - Install all system dependencies
+# - Setup Python environment
+# - Configure V380 camera (auto-detect)
+# - Download YOLO models
+# - Make scripts executable
+# - Provide setup instructions
+```
+
+**Option 2: Manual Installation**
 
 ```bash
 # 1. Clone repository
@@ -84,12 +123,12 @@ pip install -r requirements.txt
 
 # 4. Configure V380 camera
 cp config.example.py config.py
-nano config.py  # Edit RTSP_URL and other settings
+nano config.py  # Edit RTSP_URL and V380_MODE
 ```
 
 ### Start System
 
-**Option 1: Manual Start**
+**Option 1: Manual Start (Quick Test)**
 ```bash
 # Start both servers
 ./start_both_servers.sh
@@ -98,12 +137,22 @@ nano config.py  # Edit RTSP_URL and other settings
 # http://YOUR_IP:8080/web.html
 ```
 
-**Option 2: Auto-Start (Recommended)**
+**Option 2: Auto-Start on Boot (Recommended)**
 ```bash
 # Install systemd services
 sudo ./install_services.sh
 
 # Services will auto-start on boot!
+# Check status: sudo systemctl status security-system-v380
+```
+
+**Option 3: Full Installation + Auto-Start (Best for Production)**
+```bash
+# Run full installer with auto-start
+sudo ./install_ubuntu_server.sh
+
+# Then enable auto-start
+sudo ./install_services.sh
 ```
 
 ---
@@ -135,18 +184,27 @@ The system uses **FFmpeg pipeline** to:
 
 ### Configure V380 Camera
 
-Edit `config.py`:
+**Automatic Configuration** (using installer):
+```bash
+sudo ./install_ubuntu_server.sh
+# The installer will ask:
+# - Is this a V380 dual-lens camera? (default: yes)
+# - Enter RTSP URL
+# It will automatically enable V380_MODE = True
+```
+
+**Manual Configuration** (edit `config.py`):
 
 ```python
 # V380 RTSP URL
-RTSP_URL = "rtsp://admin:password@IP:554/h264/ch1/main/av_stream"
-
-# Model settings
-MODEL_NAME = 'yolov8s.pt'  # Use small model for better accuracy
-CONFIDENCE = 0.25  # 25% confidence threshold
+CAMERA_SOURCE = "rtsp://admin:password@IP:554/h264/ch1/main/av_stream"
 
 # V380 mode (IMPORTANT!)
 V380_MODE = True  # Enable V380 split frame processing
+
+# Model settings
+yolo_model = 'yolov8s.pt'  # Use small model for better accuracy
+YOLO_CONFIDENCE = 0.25  # 25% confidence threshold
 ```
 
 ### Example RTSP URL for V380
@@ -454,10 +512,17 @@ sudo systemctl restart security-system-v380 http-server
 
 ## 📚 Additional Resources
 
+### Documentation
 - **YOLOv8 Documentation**: https://docs.ultralytics.com/
 - **OpenCV Documentation**: https://docs.opencv.org/
 - **FFmpeg Documentation**: https://ffmpeg.org/documentation.html
 - **MediaPipe**: https://mediapipe.dev/
+
+### Project Guides
+- **SERVICES_README.md** - Systemd services detailed guide
+- **WEB_INTERFACE_README.md** - Web interface features guide
+- **install_ubuntu_server.sh** - Automatic installation script
+- **install_services.sh** - Systemd services installation
 
 ---
 
@@ -482,13 +547,28 @@ This project is open source and available under the MIT License.
 
 **Clone, Install, and Start Monitoring Today!**
 
+**Quick Installation:**
+```bash
+git clone https://github.com/riftech22/riftech-cam-security.git
+cd riftech-cam-security
+sudo ./install_ubuntu_server.sh  # Auto-configure everything
+```
+
+**Manual Installation:**
 ```bash
 git clone https://github.com/riftech22/riftech-cam-security.git
 cd riftech-cam-security
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+cp config.example.py config.py
+nano config.py  # Configure camera and V380_MODE
 ./start_both_servers.sh
+```
+
+**Enable Auto-Start:**
+```bash
+sudo ./install_services.sh
 ```
 
 **Made with ❤️ by Riftech**
