@@ -212,8 +212,11 @@ class ProcessingThread:
         """Processing loop - runs continuously with frame skipping."""
         while self.running:
             try:
-                # Step 1: Try to get processed frame with detections from detection thread FIRST
-                # This ensures YOLO bounding boxes are always visible in the output
+                # ALWAYS try to get frame from detection thread FIRST
+                # If detection frame exists, use it (has YOLO bounding boxes)
+                # If no detection frame, fall back to raw frame
+                detection_frame_used = False
+                
                 if self.system.detection_thread:
                     results = self.system.detection_thread.get_results()
                     if results and results.get('frame') is not None:
@@ -221,34 +224,36 @@ class ProcessingThread:
                         if processed_frame is not None and processed_frame.size > 0:
                             with self.lock:
                                 self.processed_frame = processed_frame.copy()
-                            # Log every 30 frames to avoid spam
+                            detection_frame_used = True
+                            # Log every 30 frames
                             if hasattr(self, '_frame_count'):
                                 self._frame_count += 1
                             else:
                                 self._frame_count = 1
                             if self._frame_count % 30 == 0:
-                                logging.debug(f"[Processing] Using detection thread's frame (frame #{self._frame_count})")
-                            # Skip rest of processing - we already have the best frame
-                            time.sleep(0.005)
-                            continue
+                                persons = results.get('persons', [])
+                                logging.info(f"[Processing] Using detection frame: {len(persons)} persons (frame #{self._frame_count})")
                 
-                # Step 2: If no detection frame available, get raw frame from capture thread
-                frame = self.system.capture_thread.get_frame()
-                
-                if frame is not None:
-                    # Frame skipping to reduce CPU load (process every 3rd frame)
-                    self.frame_skip = (self.frame_skip + 1) % 3
+                # If no detection frame available, process raw frame
+                # This happens during startup or when detection is slow
+                if not detection_frame_used:
+                    frame = self.system.capture_thread.get_frame()
                     
-                    if self.frame_skip == 0:
-                        # Submit frame to detection thread only on non-skipped frames
-                        if self.system.detection_thread:
-                            self.system.detection_thread.submit(frame)
-                    
-                    # Process frame with overlays (but skip night vision, heatmap, motion if we expect detection frame)
-                    processed = self.system._process_frame_internal(frame)
-                    
-                    with self.lock:
-                        self.processed_frame = processed
+                    if frame is not None:
+                        # Frame skipping to reduce CPU load (process every 3rd frame)
+                        self.frame_skip = (self.frame_skip + 1) % 3
+                        
+                        if self.frame_skip == 0:
+                            # Submit frame to detection thread only on non-skipped frames
+                            if self.system.detection_thread:
+                                self.system.detection_thread.submit(frame)
+                        
+                        # Process raw frame with basic overlays
+                        processed = self.system._process_frame_internal(frame)
+                        
+                        if processed is not None and processed.size > 0:
+                            with self.lock:
+                                self.processed_frame = processed
                 
                 # Small sleep to prevent CPU overload
                 time.sleep(0.005)
@@ -1405,7 +1410,25 @@ class SecurityWebServer:
                     if self.system.processing_thread is None:
                         await asyncio.sleep(frame_interval)
                         continue
+                    
+                    # Get latest frame from processing thread
                     frame = self.system.processing_thread.get_processed_frame()
+                    
+                    # Log if we got a frame
+                    if frame is not None and frame.size > 0:
+                        # Log every 30 frames to avoid spam
+                        if hasattr(self, '_broadcast_frame_count'):
+                            self._broadcast_frame_count += 1
+                        else:
+                            self._broadcast_frame_count = 1
+                        
+                        if self._broadcast_frame_count % 30 == 0:
+                            persons = self.system.person_count if hasattr(self.system, 'person_count') else 0
+                            logging.info(f"[Broadcast] Frame #{self._broadcast_frame_count}: {frame.shape}, persons={persons}")
+                    else:
+                        logging.warning("[Broadcast] No frame from processing thread, retrying...")
+                        await asyncio.sleep(0.05)
+                        continue
                 
                 if frame is not None and frame.size > 0:
                     # Validate frame before encoding
