@@ -1206,12 +1206,45 @@
         let fpsTimer = null;
         let lastFrameTime = Date.now();
         
-        // State
+        // State with localStorage persistence
         let isDrawing = false;
         let zonePoints = [];
+        let savedState = {
+            armed: false,
+            skeleton: false,
+            face: true,
+            motion: true,
+            heatmap: false,
+            night_vision: false
+        };
+        
+        // Load saved state from localStorage
+        function loadSavedState() {
+            try {
+                const saved = localStorage.getItem('riftech_security_state');
+                if (saved) {
+                    savedState = JSON.parse(saved);
+                    console.log('[State] Loaded from localStorage:', savedState);
+                }
+            } catch (e) {
+                console.error('[State] Error loading saved state:', e);
+            }
+        }
+        
+        // Save state to localStorage
+        function saveState() {
+            try {
+                localStorage.setItem('riftech_security_state', JSON.stringify(savedState));
+                console.log('[State] Saved to localStorage:', savedState);
+            } catch (e) {
+                console.error('[State] Error saving state:', e);
+            }
+        }
         
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
+            loadSavedState();
+            applySavedState();
             setupCanvas();
             connectWebSocket();
         });
@@ -1324,6 +1357,7 @@
             document.getElementById('clients-stat').textContent = status.clients;
             
             // Arm status
+            savedState.armed = status.armed;
             updateToggle('arm', status.armed);
             document.getElementById('arm-status-text').textContent = status.armed ? 'ARMED' : 'DISARMED';
             document.getElementById('arm-status-text').style.color = status.armed ? '#00ff00' : '#ff0000';
@@ -1334,11 +1368,13 @@
             armDisplay.className = 'status-text-large ' + (status.armed ? 'armed' : 'disarmed');
             
             // Recording status
+            savedState.recording = status.recording;
             updateToggle('record', status.recording);
             document.getElementById('recording-status').textContent = status.recording ? 'On' : 'Off';
             document.getElementById('recording-status').className = status.recording ? 'status-value danger' : 'status-value';
             
             // Mute status
+            savedState.muted = status.muted;
             updateToggle('mute', status.muted);
             
             // Zone breach status
@@ -1359,7 +1395,13 @@
             // Update zone count display
             document.getElementById('zone-count-display').textContent = `${status.zones} zones`;
             
-            // Detection features
+            // Detection features - save to localStorage
+            savedState.skeleton = status.skeleton;
+            savedState.face = status.face;
+            savedState.motion = status.motion;
+            savedState.heatmap = status.heatmap;
+            savedState.night_vision = status.night_vision;
+            
             updateToggle('skeleton', status.skeleton);
             updateToggle('face', status.face);
             updateToggle('motion', status.motion);
@@ -1377,6 +1419,9 @@
             // Model and confidence
             document.getElementById('confidence-select').value = status.confidence;
             document.getElementById('model-select').value = status.model;
+            
+            // Save state to localStorage
+            saveState();
         }
         
         function updateToggle(name, enabled) {
@@ -1446,20 +1491,38 @@
             }
         }
         
-        // Controls
+        // Controls - Apply saved state on first load
+        function applySavedState() {
+            console.log('[State] Applying saved state to UI:', savedState);
+            
+            // Apply to toggles
+            updateToggle('arm', savedState.armed);
+            updateToggle('record', savedState.recording);
+            updateToggle('mute', savedState.muted);
+            updateToggle('skeleton', savedState.skeleton);
+            updateToggle('face', savedState.face);
+            updateToggle('motion', savedState.motion);
+            updateToggle('heatmap', savedState.heatmap);
+            updateToggle('night', savedState.night_vision);
+        }
+        
         function toggleArm() {
             const currentState = document.getElementById('arm-indicator').classList.contains('on');
             const newState = !currentState;
+            savedState.armed = newState;
             sendCommand('toggle_arm', { value: newState });
             updateToggle('arm', newState);
+            saveState();
             addLog(`System ${newState ? 'ARMED' : 'DISARMED'}`, newState ? 'warning' : 'success');
         }
         
         function toggleRecord() {
             const currentState = document.getElementById('record-indicator').classList.contains('on');
             const newState = !currentState;
+            savedState.recording = newState;
             sendCommand('toggle_record', { value: newState });
             updateToggle('record', newState);
+            saveState();
             addLog(`Recording ${newState ? 'STARTED' : 'STOPPED'}`, newState ? 'warning' : 'success');
         }
         
@@ -1471,8 +1534,10 @@
         function toggleMute() {
             const currentState = document.getElementById('mute-indicator').classList.contains('on');
             const newState = !currentState;
+            savedState.muted = newState;
             sendCommand('toggle_mute', { value: newState });
             updateToggle('mute', newState);
+            saveState();
             addLog(`Alarm ${newState ? 'MUTED' : 'UNMUTED'}`, newState ? 'warning' : 'success');
         }
         
@@ -1491,40 +1556,50 @@
         function toggleSkeleton() {
             const currentState = document.getElementById('skeleton-indicator').classList.contains('on');
             const newState = !currentState;
+            savedState.skeleton = newState;
             sendCommand('toggle_skeleton', { value: newState });
             updateToggle('skeleton', newState);
+            saveState();
             addLog(`Skeleton detection ${newState ? 'ENABLED' : 'DISABLED'}`, 'info');
         }
         
         function toggleFace() {
             const currentState = document.getElementById('face-indicator').classList.contains('on');
             const newState = !currentState;
+            savedState.face = newState;
             sendCommand('toggle_face', { value: newState });
             updateToggle('face', newState);
+            saveState();
             addLog(`Face recognition ${newState ? 'ENABLED' : 'DISABLED'}`, 'info');
         }
         
         function toggleMotion() {
             const currentState = document.getElementById('motion-indicator').classList.contains('on');
             const newState = !currentState;
+            savedState.motion = newState;
             sendCommand('toggle_motion', { value: newState });
             updateToggle('motion', newState);
+            saveState();
             addLog(`Motion detection ${newState ? 'ENABLED' : 'DISABLED'}`, 'info');
         }
         
         function toggleHeatmap() {
             const currentState = document.getElementById('heatmap-indicator').classList.contains('on');
             const newState = !currentState;
+            savedState.heatmap = newState;
             sendCommand('toggle_heatmap', { value: newState });
             updateToggle('heatmap', newState);
+            saveState();
             addLog(`Heat map ${newState ? 'ENABLED' : 'DISABLED'}`, 'info');
         }
         
         function toggleNightVision() {
             const currentState = document.getElementById('night-indicator').classList.contains('on');
             const newState = !currentState;
+            savedState.night_vision = newState;
             sendCommand('toggle_night_vision', { value: newState });
             updateToggle('night', newState);
+            saveState();
             addLog(`Night vision ${newState ? 'ENABLED' : 'DISABLED'}`, 'info');
         }
         
