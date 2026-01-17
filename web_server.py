@@ -212,6 +212,27 @@ class ProcessingThread:
         """Processing loop - runs continuously with frame skipping."""
         while self.running:
             try:
+                # Step 1: Try to get processed frame with detections from detection thread FIRST
+                # This ensures YOLO bounding boxes are always visible in the output
+                if self.system.detection_thread:
+                    results = self.system.detection_thread.get_results()
+                    if results and results.get('frame') is not None:
+                        processed_frame = results.get('frame')
+                        if processed_frame is not None and processed_frame.size > 0:
+                            with self.lock:
+                                self.processed_frame = processed_frame.copy()
+                            # Log every 30 frames to avoid spam
+                            if hasattr(self, '_frame_count'):
+                                self._frame_count += 1
+                            else:
+                                self._frame_count = 1
+                            if self._frame_count % 30 == 0:
+                                logging.debug(f"[Processing] Using detection thread's frame (frame #{self._frame_count})")
+                            # Skip rest of processing - we already have the best frame
+                            time.sleep(0.005)
+                            continue
+                
+                # Step 2: If no detection frame available, get raw frame from capture thread
                 frame = self.system.capture_thread.get_frame()
                 
                 if frame is not None:
@@ -223,7 +244,7 @@ class ProcessingThread:
                         if self.system.detection_thread:
                             self.system.detection_thread.submit(frame)
                     
-                    # Always process frame (even if skipping detection)
+                    # Process frame with overlays (but skip night vision, heatmap, motion if we expect detection frame)
                     processed = self.system._process_frame_internal(frame)
                     
                     with self.lock:
