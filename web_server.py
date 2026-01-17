@@ -42,6 +42,14 @@ except ImportError as e:
     logging.warning(f"[Import] Telegram Bot not available: {e}")
     TELEGRAM_AVAILABLE = False
 
+# Try importing PySide6 for TelegramBot, fallback if not available
+try:
+    from PyQt6.QtCore import QCoreApplication, QThread
+    QT_AVAILABLE = True
+except ImportError:
+    QT_AVAILABLE = False
+    logging.warning("[Import] PyQt6 not available, TelegramBot polling will be simulated")
+
 # Import V380 FFmpeg Pipeline
 try:
     from v380_ffmpeg_pipeline import V380FFmpegProcessor
@@ -302,12 +310,22 @@ class SecurityWebSystem:
                 # Initialize Telegram Bot if configured
                 if TELEGRAM_AVAILABLE and self.config.TELEGRAM_BOT_TOKEN and self.config.TELEGRAM_CHAT_ID:
                     try:
-                        # Simple Telegram sender without Qt
-                        self.telegram_enabled = True
-                        self.telegram_token = self.config.TELEGRAM_BOT_TOKEN
-                        self.telegram_chat_id = self.config.TELEGRAM_CHAT_ID
-                        self.telegram_base_url = f"https://api.telegram.org/bot{self.telegram_token}"
-                        logging.info("[System] Telegram Bot enabled")
+                        if QT_AVAILABLE:
+                            # Use full TelegramBot class with Qt
+                            self.telegram_bot = TelegramBot(self.config)
+                            self.telegram_bot.start()
+                            self.telegram_enabled = True
+                            logging.info("[System] Telegram Bot enabled (Qt mode)")
+                        else:
+                            # Simple Telegram sender without Qt
+                            self.telegram_enabled = True
+                            self.telegram_token = self.config.TELEGRAM_BOT_TOKEN
+                            self.telegram_chat_id = self.config.TELEGRAM_CHAT_ID
+                            self.telegram_base_url = f"https://api.telegram.org/bot{self.telegram_token}"
+                            logging.info("[System] Telegram Bot enabled (direct mode)")
+                            
+                            # Start simple polling loop in background thread
+                            self._start_telegram_polling()
                     except Exception as e:
                         logging.error(f"[System] Telegram Bot init failed: {e}")
                         self.telegram_enabled = False
@@ -661,17 +679,8 @@ class SecurityWebSystem:
         # Send notification to Telegram
         if self.telegram_enabled:
             try:
-                import requests
                 status = "🔒 *ARMED*" if armed else "🔓 *DISARMED*"
-                
-                url = f"{self.telegram_base_url}/sendMessage"
-                data = {
-                    'chat_id': self.telegram_chat_id,
-                    'text': f"{status}\n\n⏰ {time.strftime('%Y-%m-%d %H:%M:%S')}",
-                    'parse_mode': 'Markdown'
-                }
-                
-                requests.post(url, json=data, timeout=10)
+                self._send_message(f"{status}\n\n⏰ {time.strftime('%Y-%m-%d %H:%M:%S')}")
             except Exception as e:
                 logging.error(f"[Telegram] Status update failed: {e}")
     
@@ -718,6 +727,119 @@ class SecurityWebSystem:
         if self.face_engine:
             self.face_engine.reload_faces()
     
+    def _start_telegram_polling(self):
+        """Start simple Telegram polling for receiving messages."""
+        def polling_loop():
+            last_update_id = 0
+            while self.running and self.telegram_enabled:
+                try:
+                    url = f"{self.telegram_base_url}/getUpdates"
+                    params = {
+                        'offset': last_update_id + 1,
+                        'timeout': 30
+                    }
+                    
+                    resp = requests.get(url, params=params, timeout=35)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if data.get('ok'):
+                            for update in data.get('result', []):
+                                last_update_id = update['update_id']
+                                self._handle_telegram_message(update)
+                    time.sleep(1)
+                except Exception as e:
+                    logging.error(f"[Telegram] Polling error: {e}")
+                    time.sleep(5)
+        
+        import threading
+        self.telegram_poll_thread = threading.Thread(target=polling_loop, daemon=True)
+        self.telegram_poll_thread.start()
+        logging.info("[Telegram] Polling started")
+    
+    def _handle_telegram_message(self, update: dict):
+        """Handle incoming Telegram messages."""
+        try:
+            if 'message' not in update:
+                return
+            
+            msg = update['message']
+            text = msg.get('text', '').strip()
+            chat_id = msg.get('chat', {}).get('id')
+            
+            if not text or chat_id != int(self.telegram_chat_id):
+                return
+            
+            logging.info(f"[Telegram] Received: {text}")
+            
+            # Handle commands
+            if text == '/start':
+                self._send_welcome_message()
+            elif text in ['🔒 Arm System', '/arm']:
+                self.toggle_arm(True)
+                self._send_message("System ARMED 🔒")
+            elif text in ['🔓 Disarm', '/disarm']:
+                self.toggle_arm(False)
+                self._send_message("System DISARMED 🔓")
+            elif text in ['📸 Snapshot', '/snapshot']:
+                self.take_snapshot()
+                self._send_message("Snapshot taken 📸")
+            elif text in ['📊 Status', '/status']:
+                status = f"""📊 *System Status*
+
+Armed: {self.is_armed}
+Recording: {self.is_recording}
+Persons Detected: {self.person_count}
+Alerts Sent: {self.alert_count}
+Camera Available: {self.camera_available}
+Demo Mode: {self.demo_mode}
+
+⏰ {time.strftime('%Y-%m-%d %H:%M:%S')}"""
+                self._send_message(status)
+            elif text == '/menu':
+                self._send_welcome_message()
+            else:
+                self._send_message("Unknown command. Use /menu or /start")
+                
+        except Exception as e:
+            logging.error(f"[Telegram] Message handling error: {e}")
+    
+    def _send_welcome_message(self):
+        """Send welcome message with menu."""
+        welcome = """🛡️ *Security System Bot*
+
+Welcome! I'm your security assistant.
+
+*Commands:*
+🔒 Arm System - Activate monitoring
+🔓 Disarm - Deactivate monitoring
+📸 Snapshot - Take screenshot
+📊 Status - Check system status
+/menu - Show this menu
+
+*System will send alerts when:*
+- Person detected (when ARMED)
+- Status changes (armed/disarmed)
+
+⚠️ Make sure system is ARMED to receive detection alerts!"""
+        self._send_message(welcome)
+    
+    def _send_message(self, text: str):
+        """Send text message to Telegram."""
+        try:
+            url = f"{self.telegram_base_url}/sendMessage"
+            data = {
+                'chat_id': self.telegram_chat_id,
+                'text': text,
+                'parse_mode': 'Markdown'
+            }
+            resp = requests.post(url, json=data, timeout=10)
+            if resp.status_code == 200:
+                logging.info(f"[Telegram] Message sent")
+            else:
+                logging.error(f"[Telegram] Message failed: {resp.status_code}")
+        except Exception as e:
+            logging.error(f"[Telegram] Send error: {e}")
+    
     def _send_person_alert(self, frame: np.ndarray, person, x1: int, y1: int, x2: int, y2: int):
         """Send alert to Telegram when person detected."""
         current_time = time.time()
@@ -753,17 +875,16 @@ class SecurityWebSystem:
             
             # Save alert photo
             cv2.imwrite(alert_path, alert_copy)
+            logging.info(f"[Telegram] Alert photo saved: {alert_path}")
             
             # Send to Telegram
-            import requests
-            
             caption = f"""🚨 *SECURITY ALERT*
-            
+
 👤 *Person Detected*
 ⏰ Time: {ts_text}
 📊 Confidence: {conf_text}
 📍 Location: {self.config.CAMERA_SOURCE if self.config else 'Unknown'}
-            
+
 📸 Alert photo attached"""
 
             url = f"{self.telegram_base_url}/sendPhoto"
