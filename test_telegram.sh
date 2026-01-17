@@ -87,16 +87,16 @@ echo "================================"
 
 # Create test image
 TEST_IMAGE="/tmp/test_telegram_photo.jpg"
-convert -size 400x200 xc:blue \
-    -pointsize 40 -fill white -gravity center \
-    -annotate +0+0 "Test Photo" \
-    -pointsize 20 -fill yellow -gravity south \
-    -annotate +0+10 "Riftech Cam Security" \
-    "$TEST_IMAGE" 2>/dev/null || {
+    convert -size 400x200 xc:blue \
+        -pointsize 40 -fill white -gravity center \
+        -annotate +0+0 "Test Photo" \
+        -pointsize 20 -fill yellow -gravity south \
+        -annotate +0+10 "Riftech Cam Security" \
+        "$TEST_IMAGE" 2>/dev/null || {
         # Fallback if ImageMagick not available
-        cat > /tmp/test_photo.html << EOF
-<html><body bgcolor="blue"><center><h1>Test Photo</h1><p>Riftech Cam Security</p></center></body></html>
         echo "⚠️  ImageMagick not available, skipping photo test"
+        echo ""
+        echo "Note: Photo alerts will still work! This test just needs ImageMagick."
         echo ""
     }
 
