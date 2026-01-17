@@ -42,25 +42,36 @@ echo ""
 # Check 4: Check recent log entries
 echo "📌 Step 4: Check Recent Log Entries"
 echo "=========================================="
-for log_file in logs/*.log 2>/dev/null; do
-    if [ -f "$log_file" ]; then
-        echo ""
-        echo "📄 File: $log_file"
-        echo "  Size: $(du -h "$log_file" | cut -f1)"
-        echo "  Last 10 lines:"
-        tail -10 "$log_file" | sed 's/^/    /'
-    fi
-done
 
-# If no log files found
-if ! ls logs/*.log 2>/dev/null; then
-    echo "❌ No log files found in logs/ directory"
+# Check websocket.log first (main log file)
+if [ -f "logs/websocket.log" ]; then
     echo ""
-    echo "Possible reasons:"
-    echo "  - Logging is disabled"
-    echo "  - Logs written to stdout/stderr"
-    echo "  - Logs in different location"
+    echo "📄 File: logs/websocket.log (MAIN LOG)"
+    echo "  Size: $(du -h logs/websocket.log | cut -f1)"
+    echo "  Last 20 lines:"
+    tail -20 logs/websocket.log | sed 's/^/    /'
 fi
+
+# Check for Telegram entries
+if [ -f "logs/websocket.log" ]; then
+    echo ""
+    echo "📄 Telegram entries in websocket.log:"
+    grep -i telegram logs/websocket.log | tail -10 | sed 's/^/    /' || echo "    (No Telegram entries found)"
+fi
+
+# Check other log files
+if [ -f "logs/http_error.log" ]; then
+    echo ""
+    echo "📄 File: logs/http_error.log"
+    echo "  Size: $(du -h logs/http_error.log | cut -f1)"
+    echo "  Last 10 lines:"
+    tail -10 logs/http_error.log | sed 's/^/    /'
+fi
+
+# List all log files
+echo ""
+echo "📄 All log files in logs/:"
+ls -lh logs/*.log 2>/dev/null | awk '{print "  " $9 " (" $5 ")"}' || echo "  (no log files found)"
 echo ""
 
 # Check 5: Check systemd journal
