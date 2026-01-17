@@ -933,8 +933,9 @@ class PersonDetector:
             cv2.circle(output, p.foot_center, 5, (255, 0, 255), -1)
             
             # Draw professional skeleton if available
-            if draw_skeleton and p.skeleton_landmarks:
+            if draw_skeleton and hasattr(p, 'skeleton_landmarks') and p.skeleton_landmarks:
                 self._draw_professional_skeleton(output, p.skeleton_landmarks, p.bbox)
+                logging.debug(f"[Detector] Skeleton drawn for person at {p.bbox}")
         
         return persons, output
     
@@ -1274,7 +1275,9 @@ class DetectionThread(threading.Thread):
                 
                 try:
                     # Detect persons with optional skeleton
+                    logging.info(f"[Detection] Running detection with skeleton={self.draw_skeleton}")
                     persons, processed = self.person_detector.detect(frame, self.draw_skeleton)
+                    logging.info(f"[Detection] Found {len(persons)} persons")
                     
                     # Detect motion
                     motion, regions = self.motion_detector.detect(frame)
@@ -1284,16 +1287,19 @@ class DetectionThread(threading.Thread):
                         self.last_motion = motion
                         self.last_motion_regions = regions
                         self.last_frame = processed
+                        logging.info(f"[Detection] Results stored: {len(persons)} persons, motion={motion}")
                 except MemoryError:
                     print("[Detection] Memory error")
                     gc.collect()
                 except Exception as e:
-                    print(f"[Detection] Error: {e}")
+                    logging.error(f"[Detection] Error: {e}")
+                    import traceback
+                    traceback.print_exc()
                     
             except Empty:
                 continue
-            except Exception:
-                pass
+            except Exception as e:
+                logging.error(f"[Detection] Loop error: {e}")
     
     def stop(self):
         self._running = False

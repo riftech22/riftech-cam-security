@@ -1,4 +1,4 @@
- #!/usr/bin/env python3
+#!/usr/bin/env python3
 """Web Server untuk Security System - Multi-threaded Version (Like Frigate)."""
 
 import asyncio
@@ -478,7 +478,7 @@ class SecurityWebSystem:
             return None
     
     def _process_frame_internal(self, frame: np.ndarray) -> np.ndarray:
-        """Internal frame processing dengan semua fitur - FIXED frame corruption."""
+        """Internal frame processing dengan semua fitur."""
         try:
             # Check if using V380 FFmpeg Pipeline
             if self.use_v380_ffmpeg:
@@ -510,6 +510,39 @@ class SecurityWebSystem:
                     fps_text = f"Capture: {self.v380_processor.capture_fps} | Detect: {self.v380_processor.detection_fps}"
                     cv2.putText(v380_frame, fps_text, (10, 50), 
                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+                    
+                    # Apply motion heatmap if enabled
+                    if self.enable_heatmap and self.motion_detector and not self.demo_mode:
+                        try:
+                            hm = self.motion_detector.get_heat_map()
+                            if hm is not None and hm.size > 0:
+                                if hm.shape[:2] != (h, w):
+                                    hm = cv2.resize(hm, (w, h))
+                                hm_color = cv2.applyColorMap(hm, cv2.COLORMAP_JET)
+                                v380_frame = cv2.addWeighted(v380_frame, 0.7, hm_color, 0.3, 0)
+                        except Exception as e:
+                            logging.error(f"[Heatmap] Error: {e}")
+                    
+                    # Draw motion boxes if enabled
+                    if self.enable_motion and not self.demo_mode:
+                        try:
+                            motion, regions = self.motion_detector.detect(v380_frame)
+                            if motion and regions:
+                                for mx1, my1, mx2, my2 in regions:
+                                    if mx1 >= 0 and my1 >= 0 and mx2 <= w and my2 <= h:
+                                        cv2.rectangle(v380_frame, (mx1, my1), (mx2, my2), (0, 165, 255), 1)
+                        except Exception as e:
+                            logging.error(f"[MotionBoxes] Error: {e}")
+                    
+                    # Draw zones if any
+                    if self.zone_manager:
+                        try:
+                            breached_zones = []
+                            # For V380, we don't have person objects with foot_center
+                            # So skip zone breach detection for now
+                            v380_frame = self.zone_manager.draw_all(v380_frame, [], self.is_armed)
+                        except Exception as e:
+                            logging.error(f"[Zones] Error: {e}")
                     
                     return v380_frame
             
@@ -562,12 +595,22 @@ class SecurityWebSystem:
             cv2.putText(output, ts, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
             
             # Get detection results (non-blocking)
+            using_detector_frame = False  # Flag to track if we're using detection thread's frame
+            
             if not self.demo_mode and self.detection_thread:
                 try:
                     results = self.detection_thread.get_results()
                     persons = results.get('persons', []) if results else []
                     has_motion = results.get('motion', False) if results else False
                     motion_regions = results.get('motion_regions', []) if results else []
+                    
+                    # Use the processed frame with detections if available
+                    if results and results.get('frame') is not None:
+                        processed_with_detections = results.get('frame')
+                        if processed_with_detections is not None and processed_with_detections.size > 0:
+                            output = processed_with_detections.copy()
+                            using_detector_frame = True  # Mark that we're using detector's frame
+                            logging.debug(f"[ProcessFrame] Using detection thread's processed frame with {len(persons)} persons")
                 except Exception as e:
                     logging.error(f"[Detection] Error getting results: {e}")
                     persons = []
@@ -580,14 +623,8 @@ class SecurityWebSystem:
             
             self.person_count = len(persons)
             
-            # DEBUG: Log overlay status
-            logging.info(f"[Overlay] Skeleton: {self.enable_skeleton}, Motion: {self.enable_motion}, "
-                        f"Heatmap: {self.enable_heatmap}, Night: {self.night_vision}, "
-                        f"Zones: {self.zone_manager.get_zone_count() if self.zone_manager else 0}, "
-                        f"Persons: {len(persons)}, Motion regions: {len(motion_regions)}")
-            
-            # Night vision (safe processing)
-            if self.night_vision:
+            # Night vision (safe processing) - SKIP if using detector's frame
+            if self.night_vision and not using_detector_frame:
                 try:
                     gray = cv2.cvtColor(output, cv2.COLOR_BGR2GRAY)
                     output = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
@@ -595,8 +632,8 @@ class SecurityWebSystem:
                 except Exception as e:
                     logging.error(f"[NightVision] Error: {e}")
             
-            # Heat map (safe processing)
-            if self.enable_heatmap and self.motion_detector and not self.demo_mode:
+            # Heat map (safe processing) - SKIP if using detector's frame (already has detections)
+            if self.enable_heatmap and self.motion_detector and not self.demo_mode and not using_detector_frame:
                 try:
                     hm = self.motion_detector.get_heat_map()
                     if hm is not None and hm.size > 0:
@@ -607,8 +644,8 @@ class SecurityWebSystem:
                 except Exception as e:
                     logging.error(f"[Heatmap] Error: {e}")
             
-            # Motion boxes
-            if self.enable_motion and motion_regions:
+            # Motion boxes - SKIP if using detector's frame (already drawn)
+            if self.enable_motion and motion_regions and not using_detector_frame:
                 try:
                     for mx1, my1, mx2, my2 in motion_regions:
                         # Validate coordinates
@@ -617,9 +654,9 @@ class SecurityWebSystem:
                 except Exception as e:
                     logging.error(f"[MotionBoxes] Error: {e}")
             
-            # Draw persons dan check zone breaches
+            # Draw persons dan check zone breaches - SKIP if using detector's frame (already drawn)
             breached_zones = []
-            if persons:
+            if persons and not using_detector_frame:
                 try:
                     for person in persons:
                         x1, y1, x2, y2 = person.bbox
@@ -665,6 +702,23 @@ class SecurityWebSystem:
                                 self._send_person_alert(output, person, x1, y1, x2, y2)
                 except Exception as e:
                     logging.error(f"[PersonBoxes] Error: {e}")
+            
+            # Still check zone breaches even if using detector's frame
+            if persons:
+                try:
+                    for person in persons:
+                        x1, y1, x2, y2 = person.bbox
+                        person_cx = (x1 + x2) // 2
+                        person_cy = (y1 + y2) // 2
+                        
+                        if self.zone_manager and self.is_armed:
+                            for zone in self.zone_manager.zones:
+                                if zone.is_complete and zone.contains_point(person_cx, person_cy):
+                                    if zone.zone_id not in breached_zones:
+                                        breached_zones.append(zone.zone_id)
+                                    self.breach_active = True
+                except Exception as e:
+                    logging.error(f"[ZoneCheck] Error: {e}")
             
             # Update breach start time
             if self.breach_active and self.breach_start_time == 0:
@@ -1030,7 +1084,7 @@ Welcome! I'm your security assistant.
             if person_frame is None or person_frame.size == 0:
                 return
             
-                # Save alert photo
+            # Save alert photo
             ts = time.strftime("%Y%m%d_%H%M%S")
             alert_path = f"alerts/alert_{ts}.jpg"
             
@@ -1453,7 +1507,7 @@ class SecurityWebServer:
                 else:
                     logging.info("[Server] Running in NORMAL MODE")
                 
-                logging.info("[Server] Access web interface at: http://YOUR_SERVER_IP:8080/web.html")
+                logging.info(f"[Server] Access web interface at: http://10.26.27.104:8080/web.html")
                 
                 # Keep running
                 while self.system.running:
