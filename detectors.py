@@ -396,43 +396,40 @@ class PersonDetector:
             return 0.0
     
     def detect_split_frame(self, frame, top_conf=0.4, bottom_conf=0.4):
-        """Detect persons in V380 split frame with enhanced dual-lens handling.
+        """Detect persons in V380 split frame with enhanced dual-lens handling for high resolution.
         
-        V380 Dual-Lens Camera Anatomy:
-        - Total Frame: 1280 x 720 px (HD)
-        - Top Split (Fixed Wide): (0,0) to (1280,360) - Wide angle, area monitoring
-        - Bottom Split (PTZ): (0,360) to (1280,720) - Tracking, detail view
+        V380 Dual-Lens Camera Anatomy (Dynamic Resolution Support):
+        - Total Frame: Can be 1280x720 (HD) or 2304x2592 (2K) - vertical stack
+        - Top Split (Fixed Wide): (0,0) to (width,height//2) - Wide angle, area monitoring
+        - Bottom Split (PTZ): (0,height//2) to (width,height) - Tracking, detail view
         
-        Key Consideration: Each split has extreme aspect ratio (1280:360 = 3.5:1)
-        Without proper letterboxing, people appear distorted (short/wide) causing AI confusion.
+        Key Considerations:
+        1. Each split has extreme aspect ratio (e.g., 2304:1296 = 1.78:1 or 1280:360 = 3.5:1)
+        2. High resolution (2K/4K) requires downscaling for performance
+        3. Without proper letterboxing, people appear distorted causing AI confusion
         
         Args:
-            frame: Input frame (can be any resolution, will be normalized to 1280x720)
+            frame: Input frame (any resolution, will be dynamically split)
             top_conf: Confidence threshold for top camera (wide angle)
             bottom_conf: Confidence threshold for bottom camera (PTZ tracking)
             
         Returns:
             List of PersonDetection objects with adjusted coordinates
         """
-        # Step 1: Normalize to standard V380 resolution (1280x720)
-        # This ensures consistent split point regardless of input resolution
-        print(f"[V380 Split] Input frame: {frame.shape[1]}x{frame.shape[0]}")
-        if frame.shape[1] != 1280 or frame.shape[0] != 720:
-            frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_LINEAR)
-            print(f"[V380 Split] Resized to: {frame.shape[1]}x{frame.shape[0]}")
-        
-        # Step 2: Get normalized dimensions
+        # Step 1: Get frame dimensions
         h, w = frame.shape[:2]
-        print(f"[V380 Split] Processing frame: {w}x{h}")
+        print(f"[V380 Split] Input frame: {w}x{h}")
         
-        # Step 3: Crop at exact split point (360px for 720p)
-        # V380 vertical stacking: Top (0-360) and Bottom (360-720)
-        split_point = h // 2  # 360px for 720p
+        # Step 2: Dynamic split point at middle of frame
+        # This works for ANY vertical stack resolution (1280x720, 2304x2592, etc.)
+        split_point = h // 2
         print(f"[V380 Split] Split point at y={split_point}")
-        top_frame_raw = frame[:split_point, :]  # Wide angle: 1280x360
-        bottom_frame_raw = frame[split_point:, :]  # PTZ: 1280x360
+        
+        # Step 3: Crop frame at split point
+        top_frame_raw = frame[:split_point, :]  # Top lens: width x (height//2)
+        bottom_frame_raw = frame[split_point:, :]  # Bottom lens: width x (height//2)
         print(f"[V380 Split] Top crop: {top_frame_raw.shape[1]}x{top_frame_raw.shape[0]}, Bottom crop: {bottom_frame_raw.shape[1]}x{bottom_frame_raw.shape[0]}")
-        mid_y = split_point  # Keep mid_y for coordinate mapping
+        mid_y = split_point  # Keep mid_y for coordinate mapping to full frame
         
         # Step 4: Preprocess each crop separately
         top_frame = self._preprocess_frame(top_frame_raw)
@@ -752,9 +749,32 @@ class PersonDetector:
         
         print(f"[DEBUG] Frame size: {w}x{h}")
         
-        # Check if frame is split (1280x720 resolution)
-        if w == 1280 and h == 720:
-            print(f"[DEBUG] Entering SPLIT FRAME mode")
+        # Calculate adaptive drawing parameters based on resolution
+        # High resolution (2K/4K) needs thicker lines and larger fonts
+        max_dim = max(w, h)
+        if max_dim >= 2000:  # 2K/4K resolution
+            bbox_thickness = 6
+            font_scale = 1.2
+            font_thickness = 3
+            circle_radius = 12
+            print(f"[DEBUG] High resolution detected: using thick lines (thickness={bbox_thickness}, font={font_scale})")
+        elif max_dim >= 1280:  # HD resolution
+            bbox_thickness = 3
+            font_scale = 0.7
+            font_thickness = 2
+            circle_radius = 8
+            print(f"[DEBUG] HD resolution detected: using medium lines (thickness={bbox_thickness}, font={font_scale})")
+        else:  # SD/Low resolution
+            bbox_thickness = 2
+            font_scale = 0.5
+            font_thickness = 1
+            circle_radius = 5
+            print(f"[DEBUG] SD resolution detected: using normal lines (thickness={bbox_thickness}, font={font_scale})")
+        
+        # Check if frame is vertical stack (h > w indicates V380 dual-lens vertical stacking)
+        # This works for ANY vertical stack resolution (1280x720, 2304x2592, etc.)
+        if h > w:
+            print(f"[DEBUG] Entering SPLIT FRAME mode (vertical stack detected: {w}x{h})")
             try:
                 persons = self.detect_split_frame(frame)
                 
@@ -762,17 +782,17 @@ class PersonDetector:
                 for p in persons:
                     x1, y1, x2, y2 = p.bbox
                     
-                    # Draw bounding box
-                    cv2.rectangle(output, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    # Draw bounding box with adaptive thickness
+                    cv2.rectangle(output, (x1, y1), (x2, y2), (0, 255, 0), bbox_thickness)
                     
-                    # Draw confidence label
+                    # Draw confidence label with adaptive font
                     label = f"Person {p.confidence:.0%}"
-                    (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                    (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)
                     cv2.rectangle(output, (x1, y1 - th - 8), (x1 + tw + 4, y1), (0, 255, 0), -1)
-                    cv2.putText(output, label, (x1 + 2, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    cv2.putText(output, label, (x1 + 2, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), font_thickness)
                     
-                    # Draw foot marker
-                    cv2.circle(output, p.foot_center, 5, (255, 0, 255), -1)
+                    # Draw foot marker with adaptive radius
+                    cv2.circle(output, p.foot_center, circle_radius, (255, 0, 255), -1)
                     
                     # Draw professional skeleton if available
                     if draw_skeleton and p.skeleton_landmarks:
